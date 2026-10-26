@@ -6,7 +6,6 @@
 <meta name="theme-color" content="#f7f6f4">
 <title>AI 生图工作台</title>
 <style>
-/* CSS 部分保持不变，省略以节省篇幅，请直接使用你现在的 CSS */
 :root{
   --bg:#f7f6f4; --surface:#ffffff; --text:#222222; --text-soft:#555555; --muted:#888888;
   --line:#e8e6e2; --line-strong:#d4d1cb; --accent:#222222; --accent-soft:#f0eeea;
@@ -196,8 +195,6 @@ p.muted.center{margin:18px 0 8px;}
   </header>
 
   <main id="views">
-
-    <!-- ========== 生图 ========== -->
     <section id="view-generate" class="view active">
       <div class="gen-card">
         <div class="model-row">
@@ -255,7 +252,6 @@ p.muted.center{margin:18px 0 8px;}
       </div>
     </section>
 
-    <!-- ========== 历史 ========== -->
     <section id="view-history" class="view">
       <div class="section-head">
         <h2>作品 <span class="count" id="histCount">0</span></h2>
@@ -264,7 +260,6 @@ p.muted.center{margin:18px 0 8px;}
       <div class="hist-grid" id="historyGrid"></div>
     </section>
 
-    <!-- ========== 提示词反推 ========== -->
     <section id="view-prompts" class="view">
       <div class="card" style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:14px 18px; margin-bottom:16px;">
         <div style="display:flex; align-items:center; gap:10px; min-width:0;">
@@ -309,13 +304,11 @@ p.muted.center{margin:18px 0 8px;}
       <div id="visionHistory"></div>
     </section>
 
-    <!-- ========== 案例 ========== -->
     <section id="view-cases" class="view">
       <p class="muted small" style="margin:0 0 16px; letter-spacing:.02em;">点击「套用」一键填入提示词与参数</p>
       <div id="caseList"></div>
     </section>
 
-    <!-- ========== 设置 ========== -->
     <section id="view-settings" class="view">
       <div class="card">
         <div class="section-head" style="margin-bottom:18px">
@@ -330,9 +323,14 @@ p.muted.center{margin:18px 0 8px;}
           <button class="eye-btn" id="btnToggleKey">显示</button>
         </div>
         <p class="hint-text">填写地址与 Key 后保存，自动从 /models 拉取模型。</p>
-        <label class="field-label" style="margin-top:18px">网络中转代理 (可选)</label>
-        <input id="cfgProxyUrl" class="input" placeholder="https://xxx.workers.dev/?url=" autocomplete="off">
-        <p class="hint-text">遇到跨域失败时，在此填入你的 Cloudflare Worker 代理地址，以 <b>?url=</b> 结尾。</p>
+
+        <!-- 🔥 这里是一键开启公共代理的开关 -->
+        <label class="field-label" style="margin-top:20px; display:flex; justify-content:space-between; align-items:center;">
+          <span>使用免费跨域代理</span>
+          <input type="checkbox" id="cfgUseCorsProxy" style="width:20px;height:20px;">
+        </label>
+        <p class="hint-text" style="margin-top:4px;">如果直接请求提示“网络中断”或“获取失败”，请勾选此项。我们使用免费公共代理帮您绕过跨域限制。</p>
+
         <button class="primary-btn" id="btnSaveCfg" style="margin-top:20px"><span class="btn-text">保存并获取模型</span></button>
         <div class="api-hint" id="cfgStatus"></div>
       </div>
@@ -433,13 +431,14 @@ async function copyText(t) {
   ta.remove();
 }
 
+// 🔥 集成公共代理的 URL 拼接
 function joinUrl(base, path) {
   if (!base) return path || '';
   let fullUrl = base.replace(/\/+$/, '') + '/' + String(path || '').replace(/^\/+/, '');
-  if (cfg.proxyUrl && cfg.proxyUrl.trim()) {
-    const p = cfg.proxyUrl.trim();
-    if (p.includes('?url=')) return p + encodeURIComponent(fullUrl);
-    return p.replace(/\/+$/, '') + '/' + fullUrl;
+  
+  if (cfg.useCorsProxy) {
+    // 使用 corsproxy.io 提供的免费公共代理
+    return 'https://corsproxy.io/?' + encodeURIComponent(fullUrl);
   }
   return fullUrl;
 }
@@ -457,8 +456,8 @@ const RATIOS = {
 };
 let currentRatio = '1:1';
 
-const CFG_KEY = 'ia_cfg_v7', HIS_KEY = 'ia_history_v7', DRAFT_KEY = 'ia_draft_v7', VH_KEY = 'ia_vision_history_v7';
-const DEFAULT_CFG = { baseUrl: '', apiKey: '', proxyUrl: '', models: [], genModel: '', visionModel: '' };
+const CFG_KEY = 'ia_cfg_v8', HIS_KEY = 'ia_history_v8', DRAFT_KEY = 'ia_draft_v8', VH_KEY = 'ia_vision_history_v8';
+const DEFAULT_CFG = { baseUrl: '', apiKey: '', useCorsProxy: false, models: [], genModel: '', visionModel: '' };
 
 let cfg = Object.assign({}, DEFAULT_CFG, store.get(CFG_KEY, {}));
 if (!Array.isArray(cfg.models)) cfg.models = [];
@@ -471,6 +470,17 @@ let visionHistory = store.get(VH_KEY, []) || [];
 let refImage = null;
 let generating = false;
 let currentView = 'generate';
+
+// 🔥 防锁屏断网：申请屏幕常亮
+let wakeLock = null;
+async function requestWakeLock() {
+  try {
+    if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
+  } catch (e) { console.log('Wake Lock error:', e); }
+}
+function releaseWakeLock() {
+  if (wakeLock) { try { wakeLock.release(); } catch {} wakeLock = null; }
+}
 
 function saveCfg() { store.set(CFG_KEY, cfg); }
 function saveHistory() {
@@ -521,7 +531,6 @@ function authHeaders(withBody = false) {
   return h;
 }
 
-// 🔥 核心修改：如果抛出异常，把底层原因带出来
 async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
@@ -531,11 +540,8 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
     return res;
   } catch (e) {
     clearTimeout(id);
-    if (e.name === 'AbortError') throw new Error('请求超时(超过' + Math.round(timeoutMs/1000) + '秒)，请检查网络或代理');
-    if (e.message && (e.message.includes('fetch') || e.message.includes('Failed'))) {
-      throw new Error('请求被拦截(跨域/断网)，请检查代理地址是否可用');
-    }
-    throw e;
+    if (e.name === 'AbortError') throw new Error('请求超时，请检查网络或接口状态');
+    throw new Error('网络连接被拦截，请尝试在设置中开启"免费跨域代理"');
   }
 }
 
@@ -719,9 +725,10 @@ function setGenProgress(p) {
 }
 function startProgress() {
   const btn = $('#btnGenerate'); btn.disabled = true; setGenProgress(6); clearInterval(progressTimer);
+  requestWakeLock(); // 防止锁屏
   progressTimer = setInterval(() => { if (progressVal >= 92) return; const step = Math.max(2, (92 - progressVal) * 0.16); setGenProgress(Math.min(92, progressVal + step)); }, 90);
 }
-function resetGenButton() { const btn = $('#btnGenerate'); btn.disabled = false; setGenProgress(0); }
+function resetGenButton() { const btn = $('#btnGenerate'); btn.disabled = false; setGenProgress(0); releaseWakeLock(); }
 function finishProgress(ok) { clearInterval(progressTimer); if (ok) { setGenProgress(100); setTimeout(resetGenButton, 500); } else { resetGenButton(); } }
 
 $('#btnGenerate').addEventListener('click', doGenerate);
@@ -760,7 +767,7 @@ async function doGenerate() {
   } catch (err) {
     console.error(err);
     finishProgress(false);
-    toast('生成失败：' + err.message, 4000); // 延长显示时间，方便查看真实错误
+    toast('生成失败：' + err.message, 4000);
   } finally {
     generating = false;
   }
@@ -802,8 +809,9 @@ function extractImages(json) {
 async function toDataUrl(src) {
   if (!/^https?:/i.test(src)) return src;
   let fetchUrl = src;
-  if (cfg.proxyUrl && cfg.proxyUrl.trim() && cfg.proxyUrl.includes('?url=')) {
-    fetchUrl = cfg.proxyUrl.trim() + encodeURIComponent(src);
+  // 如果开启了代理，图片拉取也走代理
+  if (cfg.useCorsProxy) {
+    fetchUrl = 'https://corsproxy.io/?' + encodeURIComponent(src);
   }
   try {
     const r = await fetchWithTimeout(fetchUrl, { mode: 'cors' }, 30000);
@@ -822,17 +830,13 @@ async function callImageAPI({ model, prompt, size, count, ref }) {
   try {
     res = await fetchWithTimeout(url, { method: 'POST', headers: authHeaders(true), body: JSON.stringify(body) }, 180000);
   } catch (e) {
-    throw new Error(e.message); // 抛出底层真实错误
+    throw new Error(e.message);
   }
 
   const raw = await res.text();
   if (!res.ok) {
-    // 🔥 如果服务器返回了 400/500，这里直接把服务器返回的错误内容打出来
     let errMsg = `HTTP ${res.status}: `;
-    try {
-      const errJson = JSON.parse(raw);
-      errMsg += errJson.error?.message || errJson.message || raw.slice(0, 100);
-    } catch { errMsg += raw.slice(0, 100); }
+    try { const errJson = JSON.parse(raw); errMsg += errJson.error?.message || errJson.message || raw.slice(0, 100); } catch { errMsg += raw.slice(0, 100); }
     throw new Error(errMsg);
   }
 
@@ -1168,16 +1172,24 @@ function renderCfgStatus() {
   $('#modelCount').textContent = cfg.models.length;
 }
 function renderSettings() {
-  $('#cfgBaseUrl').value = cfg.baseUrl || ''; $('#cfgApiKey').value = cfg.apiKey || ''; $('#cfgProxyUrl').value = cfg.proxyUrl || ''; renderCfgStatus();
+  $('#cfgBaseUrl').value = cfg.baseUrl || ''; 
+  $('#cfgApiKey').value = cfg.apiKey || ''; 
+  $('#cfgUseCorsProxy').checked = cfg.useCorsProxy; 
+  renderCfgStatus();
 }
 $('#btnSaveCfg').addEventListener('click', async () => {
-  const baseUrl = $('#cfgBaseUrl').value.trim(); const apiKey = $('#cfgApiKey').value.trim(); const proxyUrl = $('#cfgProxyUrl').value.trim();
+  const baseUrl = $('#cfgBaseUrl').value.trim(); 
+  const apiKey = $('#cfgApiKey').value.trim(); 
+  const useCorsProxy = $('#cfgUseCorsProxy').checked;
+  
   if (!baseUrl) { toast('请填写接口地址'); $('#cfgBaseUrl').focus(); return; }
-  cfg.baseUrl = baseUrl; cfg.apiKey = apiKey; cfg.proxyUrl = proxyUrl; saveCfg(); renderCfgStatus(); updateModelUI();
+  cfg.baseUrl = baseUrl; cfg.apiKey = apiKey; cfg.useCorsProxy = useCorsProxy; 
+  saveCfg(); renderCfgStatus(); updateModelUI();
+  
   const btn = $('#btnSaveCfg'); btn.disabled = true; btn.innerHTML = '<span class="btn-text"><span class="spinner"></span>获取模型中…</span>';
   try {
     const ok = await refreshModels(false);
-    toast(ok ? '配置已保存，模型已获取' : '配置已保存，但获取模型失败，请检查代理', 3200);
+    toast(ok ? '配置已保存，模型已获取' : '获取模型失败，请尝试勾选"免费跨域代理"', 3200);
   } catch (e) { toast('发生异常：' + e.message, 3600); }
   finally { btn.disabled = false; btn.innerHTML = '<span class="btn-text">保存并获取模型</span>'; renderCfgStatus(); }
 });
