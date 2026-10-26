@@ -108,7 +108,6 @@ body{
 .grid2{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
 .row{display:flex;} .gap8{gap:8px;} .gap10{gap:10px;} .flex1{flex:1;} .full{width:100%;}
 
-/* 主按钮：炭黑填充，胶囊形，轻微上浮 */
 .primary-btn{
   position:relative; overflow:hidden; width:100%; height:52px;
   border:1px solid var(--accent); border-radius:var(--radius-pill);
@@ -127,7 +126,6 @@ body{
   font-size:12px; font-weight:600; color:#fff; letter-spacing:.1em; text-transform:uppercase;
 }
 
-/* 次级按钮：白底细边 */
 .ghost-btn{
   background:var(--surface); border:1px solid var(--line);
   color:var(--text); border-radius:var(--radius-pill);
@@ -138,7 +136,6 @@ body{
 .ghost-btn:active{background:var(--bg); border-color:var(--line-strong);}
 .ghost-btn.danger{color:var(--danger); border-color:#e8d5d1;}
 
-/* 胶囊小按钮 */
 .chip-btn{
   background:var(--surface); border:1px solid var(--line);
   color:var(--text-soft); border-radius:var(--radius-pill);
@@ -148,7 +145,6 @@ body{
 }
 .chip-btn:active{border-color:var(--text); color:var(--text);}
 
-/* 文字按钮 */
 .text-btn{
   background:none; border:0; color:var(--muted); font-size:11.5px;
   cursor:pointer; font-family:inherit; padding:4px 2px; font-weight:500;
@@ -157,7 +153,6 @@ body{
 .text-btn.accent{color:var(--text); font-weight:600;}
 .text-btn.danger{color:var(--danger);}
 
-/* 标签 */
 .tag{
   font-size:10.5px; padding:5px 11px; border-radius:var(--radius-pill);
   background:var(--bg); color:var(--muted); border:1px solid var(--line);
@@ -175,7 +170,6 @@ body{
   border-radius:var(--radius-l); box-shadow:var(--shadow-soft);
 }
 
-/* 模型行 */
 .model-row{flex:0 0 auto; height:38px; display:flex; align-items:center; gap:12px;}
 .model-label{
   font-size:10.5px; color:var(--muted); font-weight:500;
@@ -191,7 +185,6 @@ body{
 .model-chip-name{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
 .model-chip svg{flex:0 0 auto; color:var(--muted);}
 
-/* 提示词块 */
 .prompt-block{flex:1 1 auto; min-height:0; display:flex; flex-direction:column; gap:8px;}
 .block-head{display:flex; align-items:center; justify-content:space-between; flex:0 0 auto;}
 .block-head > span{
@@ -206,7 +199,6 @@ body{
 }
 .gen-textarea{flex:1; min-height:56px; height:auto;}
 
-/* 参考图行 */
 .ref-row{flex:0 0 auto; height:44px; display:flex; gap:10px; align-items:center;}
 .ref-btn{
   flex:1; height:100%; display:flex; align-items:center; justify-content:center; gap:8px;
@@ -227,7 +219,6 @@ body{
   box-shadow:0 2px 6px rgba(0,0,0,.08);
 }
 
-/* 比例 */
 .ratio-block{flex:0 0 auto; display:flex; flex-direction:column; gap:8px;}
 .ratio-group{display:grid; grid-template-columns:repeat(4,1fr); gap:8px;}
 .ratio-btn{
@@ -243,7 +234,6 @@ body{
   border-color:var(--text); color:var(--text); background:var(--surface);
 }
 
-/* 分辨率 / 数量 */
 .meta-row{flex:0 0 auto; height:44px; display:grid; grid-template-columns:1fr 1fr; gap:10px;}
 .meta-item{
   display:flex; align-items:center; gap:8px; padding:0 14px;
@@ -263,7 +253,6 @@ body{
   color:var(--text); letter-spacing:.06em;
 }
 
-/* 结果缩略图行 */
 .gen-result{flex:0 0 auto;}
 .gen-result:empty{display:none;}
 .result-row{display:flex; gap:8px; overflow-x:auto; scrollbar-width:none; padding-bottom:2px;}
@@ -334,7 +323,6 @@ body{
 .vision-row-main{min-width:0; flex:1;}
 .clamp3{display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;}
 
-/* 上传区 */
 .uploader{
   border-radius:var(--radius-m); min-height:116px; cursor:pointer;
   display:flex; align-items:center; justify-content:center; padding:16px;
@@ -457,7 +445,6 @@ p.muted.center{margin:18px 0 8px;}
 .detail-actions{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
 .detail-actions .ghost-btn{margin:0;}
 
-/* 模型列表 */
 .model-list{display:flex; flex-direction:column; gap:8px; margin-top:14px; max-height:42dvh; overflow-y:auto; scrollbar-width:thin;}
 .model-item{
   display:flex; align-items:center; justify-content:space-between; gap:10px;
@@ -470,9 +457,6 @@ p.muted.center{margin:18px 0 8px;}
 .model-item.active{border-color:var(--text); font-weight:500;}
 .model-item .tick{color:var(--text); font-weight:700; flex:0 0 auto;}
 
-/* ============================================================
- * 图片查看器
- * ============================================================ */
 .img-viewer{
   position:fixed; inset:0; z-index:150;
   background:#111110;
@@ -532,7 +516,6 @@ p.muted.center{margin:18px 0 8px;}
 }
 .v-action-btn:active{background:rgba(255,255,255,.14);}
 
-/* ---------- Toast / Spinner ---------- */
 #toast{
   position:fixed; left:50%; bottom:108px; transform:translate(-50%,8px);
   background:var(--accent); color:#fff; padding:12px 22px;
@@ -738,6 +721,10 @@ p.muted.center{margin:18px 0 8px;}
 
         <p class="hint-text">填写地址与 Key 后保存，自动从 /models 拉取模型。</p>
 
+        <label class="field-label" style="margin-top:18px">网络中转代理 (可选)</label>
+        <input id="cfgProxyUrl" class="input" placeholder="https://xxx.workers.dev/?url=" autocomplete="off">
+        <p class="hint-text">遇到跨域失败时，在此填入你的 Cloudflare Worker 代理地址，以 <b>?url=</b> 结尾。</p>
+
         <button class="primary-btn" id="btnSaveCfg" style="margin-top:20px">
           <span class="btn-text">保存并获取模型</span>
         </button>
@@ -874,10 +861,23 @@ async function copyText(t) {
   try { document.execCommand('copy'); toast('已复制'); } catch { toast('复制失败'); }
   ta.remove();
 }
+
+/* 加入代理支持的 URL 拼接 */
 function joinUrl(base, path) {
   if (!base) return path || '';
-  return base.replace(/\/+$/, '') + '/' + String(path || '').replace(/^\/+/, '');
+  let fullUrl = base.replace(/\/+$/, '') + '/' + String(path || '').replace(/^\/+/, '');
+  
+  if (cfg.proxyUrl && cfg.proxyUrl.trim()) {
+    const p = cfg.proxyUrl.trim();
+    if (p.includes('?url=')) {
+      return p + encodeURIComponent(fullUrl);
+    } else {
+      return p.replace(/\/+$/, '') + '/' + fullUrl;
+    }
+  }
+  return fullUrl;
 }
+
 function downloadImg(src, name) {
   const a = document.createElement('a');
   a.href = src; a.download = name; a.rel = 'noopener';
@@ -898,9 +898,9 @@ let currentRatio = '1:1';
 /* ============================================================
  * 本地数据
  * ============================================================ */
-const CFG_KEY = 'ia_cfg_v6', HIS_KEY = 'ia_history_v6', DRAFT_KEY = 'ia_draft_v6', VH_KEY = 'ia_vision_history_v6';
+const CFG_KEY = 'ia_cfg_v7', HIS_KEY = 'ia_history_v7', DRAFT_KEY = 'ia_draft_v7', VH_KEY = 'ia_vision_history_v7';
 
-const DEFAULT_CFG = { baseUrl: '', apiKey: '', models: [], genModel: '', visionModel: '' };
+const DEFAULT_CFG = { baseUrl: '', apiKey: '', proxyUrl: '', models: [], genModel: '', visionModel: '' };
 
 let cfg = Object.assign({}, DEFAULT_CFG, store.get(CFG_KEY, {}));
 if (!Array.isArray(cfg.models)) cfg.models = [];
@@ -1402,8 +1402,15 @@ function extractImages(json) {
 }
 async function toDataUrl(src) {
   if (!/^https?:/i.test(src)) return src;
+  
+  // 如果图片是外部链接，且配置了代理，则拉取时也走代理
+  let fetchUrl = src;
+  if (cfg.proxyUrl && cfg.proxyUrl.trim() && cfg.proxyUrl.includes('?url=')) {
+    fetchUrl = cfg.proxyUrl.trim() + encodeURIComponent(src);
+  }
+
   try {
-    const r = await fetch(src, { mode: 'cors' });
+    const r = await fetch(fetchUrl, { mode: 'cors' });
     if (!r.ok) return src;
     const blob = await r.blob();
     return await new Promise(res => {
@@ -1427,7 +1434,9 @@ async function callImageAPI({ model, prompt, size, count, ref }) {
       headers: authHeaders(true),
       body: JSON.stringify(body)
     });
-  } catch (e) { throw new Error('网络请求失败（可能是跨域限制）'); }
+  } catch (e) { 
+    throw new Error('网络中断（可能是锁屏/切后台/跨域拦截），请配置中转代理或回前台重试'); 
+  }
 
   const raw = await res.text();
   if (!res.ok) throw new Error(`HTTP ${res.status}：${raw.slice(0, 180)}`);
@@ -2100,16 +2109,19 @@ function renderCfgStatus() {
 function renderSettings() {
   $('#cfgBaseUrl').value = cfg.baseUrl || '';
   $('#cfgApiKey').value = cfg.apiKey || '';
+  $('#cfgProxyUrl').value = cfg.proxyUrl || '';
   renderCfgStatus();
 }
 
 $('#btnSaveCfg').addEventListener('click', async () => {
   const baseUrl = $('#cfgBaseUrl').value.trim();
   const apiKey = $('#cfgApiKey').value.trim();
+  const proxyUrl = $('#cfgProxyUrl').value.trim();
   if (!baseUrl) { toast('请填写接口地址'); $('#cfgBaseUrl').focus(); return; }
 
   cfg.baseUrl = baseUrl;
   cfg.apiKey = apiKey;
+  cfg.proxyUrl = proxyUrl;
   saveCfg();
   renderCfgStatus();
   updateModelUI();
