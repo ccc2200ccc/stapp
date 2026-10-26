@@ -585,7 +585,7 @@ button:focus-visible,a:focus-visible{outline:3px solid #97b69d;outline-offset:4p
 @media(max-width:760px){.app{display:flex;flex-direction:column;height:100dvh;max-width:none}.topbar{height:65px;flex:0 0 auto;padding:0 20px;background:#fcfdfb}.topbar .logo{display:grid;width:30px;height:30px;border-radius:10px;background:var(--accent);font-size:19px}.topbar .brand{gap:9px}.topbar h1{font-size:14px}.topbar h1:before{display:none}.model-badge{max-width:170px;font-size:10px;padding:7px 10px}.bottom-nav{order:3;display:grid;grid-template-columns:repeat(5,1fr);gap:0;padding:8px 8px calc(8px + env(safe-area-inset-bottom));border:0;border-top:1px solid var(--line);background:#fcfdfb;flex:0 0 auto}.studio-brand,.nav-caption,.sidebar-note,.sidebar-footer{display:none}.nav-btn{flex-direction:column;gap:3px;font-size:10px;padding:6px 0;border-radius:12px}.nav-ico{width:30px;height:24px}.nav-btn.active{background:none}.nav-btn.active .nav-ico{background:#e8f0e4;border-radius:8px;width:40px}.nav-btn.active:after{display:none}.nav-btn[data-view="settings"]{margin:0}#views{order:2;padding:21px 16px 18px;display:flex;min-height:0;flex:1}#view-generate.active{display:flex;flex-direction:column;gap:19px;overflow-y:auto;padding:0 1px 1px}.studio-intro{display:block;margin:0;flex-shrink:0;padding:0 4px}.studio-intro h2{font-size:25px;margin-bottom:6px}.eyebrow{font-size:9px;margin-bottom:8px}.studio-intro p{font-size:11px}.intro-pill{display:none}.gen-card{width:100%;flex:none;padding:20px;gap:18px;border-radius:17px}.panel-heading{padding-bottom:14px}.panel-heading strong{font-size:13px}.gen-textarea{min-height:142px;height:142px;font-size:13px}.model-chip{min-height:44px}.ratio-btn{height:59px}.canvas-panel{width:100%;flex:none;padding:20px;gap:16px;border-radius:17px}.canvas-stage{min-height:360px;flex:none}.art-composition{width:240px;margin-bottom:32px}.canvas-empty{bottom:21px}.canvas-help{font-size:10px}.canvas-footer{font-size:9px}.studio-footer{flex-shrink:0;font-size:8px;padding:1px 5px 8px}.studio-footer span:last-child{display:none}.card{padding:20px}.hist-grid{grid-template-columns:repeat(2,1fr);gap:12px}#caseList{grid-template-columns:1fr}.modal{align-items:flex-end}.modal-card{border-radius:22px 22px 0 0;max-width:none}#toast{bottom:95px}.input,.select{min-height:44px}.text-btn,.mini-text{min-height:26px}.head-actions{gap:12px}.ref-btn{font-size:11px}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 
-
+.topbar{display:none!important}#views{padding-top:16px!important}
 /* Generate progress wave */
 #btnGenerate{isolation:isolate}
 .wave-loader{position:absolute;z-index:2;left:calc(50% - 34px);top:50%;width:74px;height:48px;opacity:0;pointer-events:none;transform:translate(-50%,-50%) scale(.72);transition:opacity .22s ease,transform .3s cubic-bezier(.22,1.4,.36,1)}
@@ -1604,12 +1604,8 @@ function showViewerImage() {
   applyViewerTransform();
   const multi = viewerImages.length > 1;
   $('#viewerPager').textContent = multi ? `${viewerIndex + 1} / ${viewerImages.length}` : '';
-  const prev = document.querySelector('#viewerPrev');
-  const next = document.querySelector('#viewerNext');
-  prev.style.display = 'grid';
-  next.style.display = 'grid';
-  prev.disabled = !multi || viewerIndex <= 0;
-  next.disabled = !multi || viewerIndex >= viewerImages.length - 1;
+  $('#viewerPrev').style.display = 'grid';
+  $('#viewerNext').style.display = 'grid';
 }
 
 function openViewer(images, index, itemId) {
@@ -1639,11 +1635,13 @@ $('#viewerReset').addEventListener('click', resetView);
 $('#viewerZoomIn').addEventListener('click', () => zoomBy(1.25));
 $('#viewerZoomOut').addEventListener('click', () => zoomBy(0.8));
 
-$('#viewerPrev').addEventListener('click', () => {
-  if (viewerIndex > 0) { viewerIndex--; showViewerImage(); }
+$('#viewerPrev').addEventListener('click', e => {
+  e.stopPropagation();
+  if (viewerImages.length > 1) { viewerIndex = (viewerIndex - 1 + viewerImages.length) % viewerImages.length; showViewerImage(); }
 });
-$('#viewerNext').addEventListener('click', () => {
-  if (viewerIndex < viewerImages.length - 1) { viewerIndex++; showViewerImage(); }
+$('#viewerNext').addEventListener('click', e => {
+  e.stopPropagation();
+  if (viewerImages.length > 1) { viewerIndex = (viewerIndex + 1) % viewerImages.length; showViewerImage(); }
 });
 
 $('#viewerDetailBtn').addEventListener('click', () => {
