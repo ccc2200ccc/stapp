@@ -634,7 +634,7 @@ button:focus-visible,a:focus-visible{outline:3px solid #97b69d;outline-offset:4p
 .hist-item:hover{transform:translateY(-3px);box-shadow:0 16px 34px rgba(28,53,39,.16)}
 .hist-item>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:transform .45s cubic-bezier(.2,.7,.2,1)}
 .hist-item:hover>img{transform:scale(1.045)}
-.hist-item:after{content:'';position:absolute;inset:30% 0 0;z-index:1;pointer-events:none;background:linear-gradient(180deg,transparent 0%,rgba(10,24,17,.12) 28%,rgba(10,24,17,.52) 100%)}
+.hist-item:after{display:none}
 .hist-glass{position:absolute;z-index:2;left:9px;right:9px;bottom:9px;padding:13px 13px 11px;border:1px solid rgba(255,255,255,.42);border-radius:15px;background:rgba(248,251,247,.68);backdrop-filter:blur(18px) saturate(145%);-webkit-backdrop-filter:blur(18px) saturate(145%);box-shadow:0 8px 24px rgba(10,25,16,.12);color:#233c34;text-align:left}
 .hist-prompt{margin:0 0 9px;font-size:12px;font-weight:600;line-height:1.55;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
 .hist-meta{display:flex;align-items:center;justify-content:space-between;gap:7px;color:#52665a;font-size:10px;min-width:0}
@@ -646,6 +646,7 @@ button:focus-visible,a:focus-visible{outline:3px solid #97b69d;outline-offset:4p
 .hist-detail-btn{margin-top:10px;width:100%;min-height:34px;border:1px solid rgba(255,255,255,.58);border-radius:10px;background:rgba(255,255,255,.4);color:#254532;font-size:10px;font-weight:600;letter-spacing:.04em;cursor:pointer;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);transition:background .18s,transform .18s}
 .hist-detail-btn:hover{background:rgba(255,255,255,.72)}.hist-detail-btn:active{transform:scale(.98)}
 .hist-detail-btn:focus-visible{outline:2px solid #477b55;outline-offset:2px}
+.canvas-info-card{position:absolute;z-index:3;left:14px;right:14px;bottom:14px;padding:16px 17px;border:1px solid rgba(255,255,255,.68);border-radius:15px;background:rgba(248,252,248,.8);color:#233c34;box-shadow:0 10px 28px rgba(10,25,16,.16),inset 0 1px rgba(255,255,255,.7);backdrop-filter:blur(18px) saturate(145%);-webkit-backdrop-filter:blur(18px) saturate(145%)}.canvas-info-card[hidden]{display:none}.canvas-info-prompt{display:block;max-height:5.4em;overflow:auto;margin:0 0 12px;font-size:12px;font-weight:600;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}.canvas-info-meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;color:#607466;font-size:10px}.canvas-info-meta span{padding:4px 8px;border:1px solid rgba(70,111,80,.14);border-radius:7px;background:rgba(255,255,255,.5)}
 @media(max-width:760px){.hist-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.hist-item{border-radius:15px}.hist-glass{left:7px;right:7px;bottom:7px;padding:10px;border-radius:12px}.hist-prompt{font-size:11px}.hist-meta{font-size:9px;flex-wrap:wrap}.hist-detail-btn{min-height:32px;margin-top:8px}}
 @media(prefers-reduced-motion:reduce){.hist-item,.hist-item>img,.hist-detail-btn{transition:none}}
 /* Navigation UX refresh: clear hierarchy on desktop, floating glass dock on mobile. */
@@ -787,11 +788,12 @@ body:before,body:after{content:'';position:fixed;z-index:-1;border-radius:50%;fi
           <div class="art-composition" aria-hidden="true"><div class="art-sheet"></div><div class="art-sheet second"></div><div class="art-main"><div class="art-sun"></div><div class="art-hill"></div><div class="art-hill h2"></div><div class="art-hill h3"></div></div><div class="art-orbit">✧</div><div class="art-label">WHERE IDEAS COME TO LIFE</div></div>
           <div class="canvas-empty"><h3>这里，即将诞生你的想象</h3><p>完成左侧设置，点击「开始生成」<br>你的作品将在这里呈现</p></div>
           <img class="preview-image" id="canvasImage" alt="最近生成的作品，点击放大" tabindex="0" role="button" hidden>
+          <div class="canvas-info-card" id="canvasInfoCard" hidden>
+            <p class="canvas-info-prompt" id="canvasInfoPrompt"></p>
+            <div class="canvas-info-meta"><span id="canvasInfoModel">模型</span><span id="canvasInfoRatio">1:1</span><span id="canvasInfoTime"></span></div>
+          </div>
         </div>
-        <div class="canvas-help"><span>☼</span><div><b>好作品，从一个具体的描述开始</b>试着加入光线、材质与情绪，给 AI 更多想象的线索。</div></div>
-        <div class="canvas-footer"><span id="canvasCaption">等待你的第一个灵感</span><span>IMAGINATION, UNLIMITED.</span></div>
       </aside>
-      <div class="studio-footer"><span>✧ &nbsp; 你的灵感与作品，仅保存在当前浏览器</span><span>DESIGNED FOR YOUR NEXT GREAT IDEA</span></div>
     </section>
 
     <!-- ========== 历史 ========== -->
@@ -898,6 +900,12 @@ body:before,body:after{content:'';position:fixed;z-index:-1;border-radius:50%;fi
           <span class="type-pill">OpenAI 兼容</span>
         </div>
 
+        <label class="field-label" style="margin-top:0">接口类型</label>
+        <select id="cfgProvider" class="select">
+          <option value="custom">自定义 OpenAI 兼容接口</option>
+          <option value="deepseek">DeepSeek</option>
+        </select>
+
         <label class="field-label" style="margin-top:0">接口地址</label>
         <input id="cfgBaseUrl" class="input" placeholder="https://api.example.com/v1" autocomplete="off">
 
@@ -907,7 +915,7 @@ body:before,body:after{content:'';position:fixed;z-index:-1;border-radius:50%;fi
           <button class="eye-btn" id="btnToggleKey">显示</button>
         </div>
 
-        <p class="hint-text">填写地址与 Key 后保存，自动从 /models 拉取模型。</p>
+        <p class="hint-text" id="providerHint">填写地址与 Key 后保存，自动从 /models 拉取模型。</p>
 
         <button class="primary-btn" id="btnSaveCfg" style="margin-top:20px">
           <span class="btn-text">保存并获取模型</span>
@@ -1078,7 +1086,7 @@ let currentRatio = '1:1';
  * ============================================================ */
 const CFG_KEY = 'ia_cfg_v6', HIS_KEY = 'ia_history_v6', DRAFT_KEY = 'ia_draft_v6', VH_KEY = 'ia_vision_history_v6';
 
-const DEFAULT_CFG = { baseUrl: '', apiKey: '', models: [], genModel: '', visionModel: '' };
+const DEFAULT_CFG = { provider: 'custom', baseUrl: '', apiKey: '', models: [], genModel: '', visionModel: '' };
 
 let cfg = Object.assign({}, DEFAULT_CFG, store.get(CFG_KEY, {}));
 if (!Array.isArray(cfg.models)) cfg.models = [];
@@ -1930,33 +1938,14 @@ function renderHistory() {
     return;
   }
   grid.innerHTML = history.map(h => {
-    const imageCount = Math.max((h.images || []).length, (h.thumbs || []).length);
     return `
     <article class="hist-item" data-id="${h.id}">
       <img src="${imgOf(h)}" alt="作品：${escapeHtml(h.prompt || 'AI 生成图片')}" loading="lazy">
-      ${imageCount > 1 ? `<span class="hist-badge">${imageCount} 张</span>` : ''}
-      <div class="hist-glass">
-        <p class="hist-prompt">${escapeHtml(h.prompt || '未记录提示词')}</p>
-        <div class="hist-meta">
-          <span class="hist-model" title="${escapeHtml(h.model || '演示作品')}">${escapeHtml(h.model || '演示作品')}</span>
-          <span class="hist-meta-right">
-            <span class="hist-ratio">${escapeHtml(h.ratio || '1:1')}</span>
-            <time class="hist-date">${escapeHtml(fmtTime(h.ts))}</time>
-          </span>
-        </div>
-        <button class="hist-detail-btn" type="button" data-open-detail="${h.id}">查看作品详情</button>
-      </div>
     </article>`;
   }).join('');
 }
 
 $('#historyGrid').addEventListener('click', e => {
-  const detailButton = e.target.closest('[data-open-detail]');
-  if (detailButton) {
-    e.stopPropagation();
-    openDetail(detailButton.dataset.openDetail);
-    return;
-  }
   const el = e.target.closest('.hist-item');
   if (!el) return;
   const item = history.find(h => h.id === el.dataset.id);
@@ -2411,16 +2400,34 @@ function renderCfgStatus() {
 }
 
 function renderSettings() {
+  $('#cfgProvider').value = cfg.provider || 'custom';
   $('#cfgBaseUrl').value = cfg.baseUrl || '';
   $('#cfgApiKey').value = cfg.apiKey || '';
+  updateProviderUI();
   renderCfgStatus();
 }
 
+function updateProviderUI() {
+  const provider = $('#cfgProvider').value;
+  const deepseek = provider === 'deepseek';
+  const url = $('#cfgBaseUrl');
+  if (deepseek && url.dataset.provider !== 'deepseek') url.value = 'https://api.deepseek.com';
+  if (!deepseek && url.dataset.provider === 'deepseek') url.value = '';
+  url.dataset.provider = deepseek ? 'deepseek' : 'custom';
+  $('#providerHint').textContent = deepseek
+    ? 'DeepSeek 官方接口主要提供文本/对话模型，不提供图片生成接口；可用于提示词相关能力。'
+    : '填写地址与 Key 后保存，自动从 /models 拉取模型。';
+}
+
+$('#cfgProvider').addEventListener('change', updateProviderUI);
+
 $('#btnSaveCfg').addEventListener('click', async () => {
+  const provider = $('#cfgProvider').value;
   const baseUrl = $('#cfgBaseUrl').value.trim();
   const apiKey = $('#cfgApiKey').value.trim();
   if (!baseUrl) { toast('请填写接口地址'); $('#cfgBaseUrl').focus(); return; }
 
+  cfg.provider = provider;
   cfg.baseUrl = baseUrl;
   cfg.apiKey = apiKey;
   saveCfg();
@@ -2522,7 +2529,14 @@ function syncCanvas(item) {
   $('#canvasStage').classList.toggle('has-image', !!src);
   if (src) { img.src = src; img.dataset.id = item.id; }
   else { img.removeAttribute('src'); delete img.dataset.id; }
-  $('#canvasCaption').textContent = src ? '最近生成 · 点击作品查看大图' : '等待你的第一个灵感';
+  const info = $('#canvasInfoCard');
+  info.hidden = !item || !src;
+  if (item && src) {
+    $('#canvasInfoPrompt').textContent = item.prompt || '未记录提示词';
+    $('#canvasInfoModel').textContent = item.model || '演示作品';
+    $('#canvasInfoRatio').textContent = item.ratio || '1:1';
+    $('#canvasInfoTime').textContent = fmtTime(item.ts);
+  }
 }
 function openCanvas() {
   const item = history.find(h => h.id === $('#canvasImage').dataset.id);
@@ -2539,7 +2553,7 @@ $('#modelModal').setAttribute('aria-labelledby','modelModalTitle');
 $('#toast').setAttribute('role','status');
 $('#toast').setAttribute('aria-live','polite');
 // Keep descriptive labels visible to assistive technology.
-for (const [id,label] of Object.entries({cfgBaseUrl:'接口地址',cfgApiKey:'API Key',visionLang:'反推语言',visionStyle:'反推风格',modelSearch:'搜索模型',modelModalClose:'关闭模型选择',btnRemoveRef:'移除参考图',btnRemoveVision:'移除反推图片'})) document.getElementById(id)?.setAttribute('aria-label',label);
+for (const [id,label] of Object.entries({cfgProvider:'接口类型',cfgBaseUrl:'接口地址',cfgApiKey:'API Key',visionLang:'反推语言',visionStyle:'反推风格',modelSearch:'搜索模型',modelModalClose:'关闭模型选择',btnRemoveRef:'移除参考图',btnRemoveVision:'移除反推图片'})) document.getElementById(id)?.setAttribute('aria-label',label);
 document.addEventListener('keydown', e => {
   if ($('#imgViewer').classList.contains('show')) {
     if (e.key === 'Escape') $('#viewerClose').click();
