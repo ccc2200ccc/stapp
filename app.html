@@ -2625,137 +2625,92 @@ init();
   const canvas = document.getElementById('flowBgCanvas');
   if (!root || !canvas) return;
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { root.classList.add('fallback'); return; }
-  const MAX_COLORS = 6, TRAIL = 16, MAX_FLARES = 8;
+  const MAX_DOTS = 42000, GOLDEN = Math.PI * (3 - Math.sqrt(5));
   const VERTEX = `#version 300 es
-in vec2 aPosition;
-void main(){gl_Position=vec4(aPosition,0.0,1.0);}`;
+precision highp float;
+layout(location = 0) in vec4 aDot;
+uniform vec2 uSize;uniform float uPixel;uniform float uRadius;uniform float uCell;uniform vec4 uLens;uniform vec2 uWarp;uniform vec3 uGlow;uniform vec3 uFrom;uniform vec3 uTo;uniform vec4 uGlowColor;uniform vec3 uGradient;uniform float uTime;uniform float uWave;uniform float uSparkle;uniform float uFocus;uniform float uBase;uniform float uLight;
+out vec2 vLocal;out float vRadius;out float vBlur;out float vHalo;out float vHaloWidth;out vec3 vColor;out float vAlpha;
+vec3 toRgb(vec3 lab){float l=lab.x+0.3963377774*lab.y+0.2158037573*lab.z;float m=lab.x-0.1055613458*lab.y-0.0638541728*lab.z;float s=lab.x-0.0894841775*lab.y-1.291485548*lab.z;vec3 lms=vec3(l*l*l,m*m*m,s*s*s);vec3 lin=clamp(vec3(4.0767416621*lms.x-3.3077115913*lms.y+0.2309699292*lms.z,-1.2684380046*lms.x+2.6097574011*lms.y-0.3413193965*lms.z,-0.0041960863*lms.x-0.7034186147*lms.y+1.707614701*lms.z),0.0,1.0);return mix(lin*12.92,1.055*pow(lin,vec3(1.0/2.4))-0.055,step(0.0031308,lin));}
+vec3 blend(vec3 a,vec3 b,float t){vec2 ab=mix(a.yz,b.yz,t);float chroma=mix(length(a.yz),length(b.yz),t);float len=length(ab);return vec3(mix(a.x,b.x,t),len>1e-5?ab*(chroma/len):ab);}
+vec3 wave(vec2 p,float t){float ay=p.x*0.018+t+1.1*sin(p.y*0.016-t*0.4);float ax=p.y*0.021+t*0.7+1.3*sin(p.x*0.013+t*0.3);float spread=cos(ay)*0.0176*cos(p.y*0.016-t*0.4)+0.5*cos(ax)*0.0169*cos(p.x*0.013+t*0.3);return uWave*vec3(0.5*sin(ax),sin(ay),spread);}
+void main(){vec2 corner=vec2(float(gl_VertexID&1),float(gl_VertexID>>1))*2.0-1.0;vec2 center=uSize*0.5;vec3 swell=wave(aDot.xy,uTime);vec2 source=center+(aDot.xy-center)*mix(1.12,1.0,uFocus)+swell.xy;vec2 rel=source-uLens.xy;float x=length(rel)/uLens.z;float y=clamp(1.0-x*x,0.0,1.0);float w=y*y*y;float k=uWarp.x*uLens.w;float grow=1.0+k*w;float spread=1.0+k*(w-6.0*x*x*y*y);float theta=uWarp.y*uLens.w*w;vec2 turn=vec2(cos(theta),sin(theta));vec2 display=uLens.xy+vec2(turn.x*rel.x-turn.y*rel.y,turn.y*rel.x+turn.x*rel.y)*grow;float scale=sqrt(max(grow*spread,0.02));float spark=0.0;if(uSparkle>0.0){float phase=0.5+0.5*sin(uTime*(0.55+aDot.w*0.9)+aDot.z*6.2831853);spark=pow(phase,48.0)*step(0.72,fract(aDot.z*7.31+aDot.w*3.17))*uSparkle;}float pool=0.0;if(uGlow.x>0.0){float g=length(display-uLens.xy)/uGlow.x;float q=clamp(1.0-g*g,0.0,1.0);pool=q*q*uGlow.y*uLens.w;}float radius=uRadius*(1.0+0.7*spark);float device=radius*scale*uPixel;float fade=1.0;if(device<0.75){fade=device*device/0.5625;radius=0.75/(scale*uPixel);}float blur=(1.0-uFocus)*uCell*0.42;float energy=pow(radius/(radius+blur),1.15);float halo=pool*uGlow.z;float haloWidth=2.0+radius*1.5;float pad=radius+blur*1.2+1.5/(scale*uPixel)+(halo>0.0?haloWidth*2.5:0.0);float t=clamp(dot(aDot.xy-center,uGradient.xy)/uGradient.z+0.5,0.0,1.0);vec3 tone=blend(uFrom,uTo,t);vec3 deep=vec3(tone.x*0.72,tone.yz*1.3);vec3 base=toRgb(tone);vec3 lit=toRgb(mix(deep,uGlowColor.xyz,uGlowColor.w));vec3 color=mix(base,lit,clamp(pool,0.0,1.0)*0.8);color=mix(color,uLight>0.5?color*0.6:vec3(1.0),spark*0.55);vLocal=corner*pad;vRadius=radius+blur;vBlur=blur*0.7;vHalo=halo;vHaloWidth=haloWidth;vColor=color;float shade=clamp(1.0-swell.z*2.5,0.4,1.6);vAlpha=mix(min(uBase*shade,1.0),1.0,clamp(max(pool,spark),0.0,1.0))*fade*energy*smoothstep(0.0,0.25,uFocus+0.08);vec2 point=display+corner*pad*scale;gl_Position=vec4(point.x/uSize.x*2.0-1.0,1.0-point.y/uSize.y*2.0,0.0,1.0);}`;
   const FRAGMENT = `#version 300 es
 precision highp float;
-uniform vec2 uResolution;
-uniform float uTime;
-uniform float uClock;
-uniform float uScale;
-uniform float uDetail;
-uniform float uGlow;
-uniform float uThickness;
-uniform float uSwirl;
-uniform float uFold;
-uniform float uBlackPoint;
-uniform float uBrightness;
-uniform float uBalance;
-uniform float uGrain;
-uniform float uOpacity;
-uniform vec2 uOffset;
-uniform vec2 uRotation;
-uniform vec2 uDrift;
-uniform vec3 uColors[6];
-uniform int uColorCount;
-uniform vec3 uBackground;
-uniform float uOpaque;
-uniform float uLight;
-uniform vec3 uReveal;
-uniform vec4 uTrail[16];
-uniform float uTrailWeight[16];
-uniform int uTrailCount;
-uniform vec4 uFlares[8];
-uniform int uFlareCount;
-uniform vec4 uHeat;
-out vec4 outColor;
-float hash(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}
-vec3 palette(float g){if(uColorCount<=1)return uColors[0];float t=g<uBalance?0.5*g/uBalance:0.5+0.5*(g-uBalance)/(1.0-uBalance);float scaled=t*float(uColorCount-1);int index=int(min(floor(scaled),float(uColorCount-2)));return mix(uColors[index],uColors[index+1],smoothstep(0.0,1.0,scaled-float(index)));}
-float warmth(float age,float weight,vec2 offset){float life=clamp(age/0.90,0.0,1.0);vec2 spread=offset/(uHeat.z*(1.0+0.8*life));return weight*(1.0-life)*(1.0-life)*exp(-dot(spread,spread));}
-float trailHeat(vec2 q){float heat=0.0;for(int k=0;k<16;k++){if(k>=uTrailCount)break;vec4 a=uTrail[k];float weight=uTrailWeight[k];heat=max(heat,warmth(a.z,weight,q-a.xy));int next=min(k+1,15);if(next==k||next>=uTrailCount)continue;vec4 b=uTrail[next];float older=uTrailWeight[next];vec2 ab=b.xy-a.xy;float span=dot(ab,ab);float t=span>1e-10?clamp(dot(q-a.xy,ab)/span,0.0,1.0):0.0;float even=smoothstep(0.0,uHeat.z,sqrt(span));float age=mix(min(a.w,b.z),mix(a.w,b.z,t),even);float strength=mix(max(weight,older),mix(weight,older,t),even);heat=max(heat,warmth(age,strength,q-a.xy-ab*t));}return heat;}
-float flareHeat(vec2 q){float heat=0.0;for(int k=0;k<8;k++){if(k>=uFlareCount)break;vec4 f=uFlares[k];float life=clamp(f.z/1.80,0.0,1.0);float rise=1.0-exp(-f.z/0.07);float fall=exp(-3.0*life)*(1.0-life)*(1.0-life);vec2 offset=(q-f.xy)/(uHeat.z*(0.9+1.6*sqrt(life)));heat+=rise*fall*exp(-dot(offset,offset));}return heat;}
-void main(){
-float time=uTime;vec2 uv=(gl_FragCoord.xy-0.5*uResolution)/uResolution.y;vec2 q=uv-uOffset;
-vec2 view=vec2(q.x*uRotation.x-q.y*uRotation.y,q.x*uRotation.y+q.y*uRotation.x);vec2 p=uScale*view-0.5;p+=uDrift;
-float heat=0.0;float flare=0.0;if(uHeat.w>0.5){heat=trailHeat(uv)*uHeat.x;flare=flareHeat(uv)*uHeat.y;}
-float power=uThickness*(1.0+(heat+flare)*0.45);
-vec2 i=p;float c=0.0;float blurred=0.0;float r=length(p+vec2(sin(time),sin(time*0.3+5.0))*0.5);float d=length(p);
-float rot=d+time+p.x*uSwirl;float cosRot=cos(rot);
-mat2 warp=mat2(cos(rot-sin(time/5.0)),sin(rot),-sin(cosRot-time),cosRot)*uFold;float layers=ceil(uDetail);
-for(float n=0.0;n<8.0;n++){if(n>=layers)break;p*=warp;float t=r-time/(n+3.0);i-=p+vec2(cos(t-i.x-r)+sin(t+i.y),sin(t-i.y)+cos(t+i.x)+r);float l=length(vec2(sin(i.x+t),cos(i.y+t)));float footprint=0.5*length(vec2(dFdx(l),dFdy(l)));l=sqrt(l*l+footprint*footprint);float weight=clamp(uDetail-n,0.0,1.0);c+=weight*uGlow/(power==1.0?l:pow(max(l,1e-6),power));if(uReveal.y>0.5)blurred+=weight*uGlow/sqrt(l*l+0.0025);}
-c/=6.0;c*=1.0+heat*0.25+flare*0.6;float reveal=1.0;float front=0.0;
-if(uReveal.y>0.5){float level=log(max(blurred/6.0,1e-5))-uReveal.x;reveal=smoothstep(-1.0,1.0,level)*smoothstep(0.0,0.08,uReveal.z);front=0.2*exp(-level*level*1.5)*smoothstep(-2.6,-0.6,uReveal.x);}
-float g=clamp(max(c-uBlackPoint,0.0)*uBrightness+front,0.0,1.0);vec3 col=palette(g);
-float noise=hash(gl_FragCoord.xy+fract(uClock)*97.0)-0.5;float a=(g+noise*uGrain);a=clamp(a+noise/255.0,0.0,1.0)*reveal*uOpacity;
-outColor=vec4(mix(uBackground,col,a),1.0);
-}`;
+uniform float uOpacity;in vec2 vLocal;in float vRadius;in float vBlur;in float vHalo;in float vHaloWidth;in vec3 vColor;in float vAlpha;out vec4 fragColor;
+void main(){float dist=length(vLocal);float d=dist-vRadius;float edge=max(fwidth(dist),1e-4)+vBlur;float cover=1.0-smoothstep(-0.5*edge,0.5*edge,d);float glow=vHalo*exp(-max(d,0.0)/vHaloWidth)*0.5;float alpha=min(cover+glow,1.0)*vAlpha*uOpacity;if(alpha<0.002)discard;fragColor=vec4(vColor*alpha,alpha);}`;
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
-  const gl = canvas.getContext('webgl2', { alpha: false, antialias: false, depth: false, stencil: false, premultipliedAlpha: true, powerPreference: 'high-performance' });
+  const toLinear = c => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+  const toOklab = hex => { const rgb = [1, 3, 5].map(i => toLinear(parseInt(hex.slice(i, i + 2), 16) / 255)); const l = Math.cbrt(0.4122214708 * rgb[0] + 0.5363325363 * rgb[1] + 0.0514459929 * rgb[2]); const m = Math.cbrt(0.2119034982 * rgb[0] + 0.6806995451 * rgb[1] + 0.1073969566 * rgb[2]); const s = Math.cbrt(0.0883024619 * rgb[0] + 0.2817188376 * rgb[1] + 0.6299787005 * rgb[2]); return [0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s, 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s, 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s]; };
+  const hash = (a, b, c) => { let h = (Math.imul(a, 374761393) + Math.imul(b, 668265263) + Math.imul(c, 1274126177)) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); h ^= h >>> 16; return (h >>> 0) / 4294967296; };
+  const settings = { radius: 1.6, step: 19, from: toOklab('#5227FF'), to: toOklab('#FF9FFC'), glow: toOklab('#ffffff'), lens: 220, strength: 0.72, glowRadius: 150, glowIntensity: 0.9, base: 0.52, wave: 12, sparkle: 1, speed: 0.85 };
+  const gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: true, antialias: false, depth: false, stencil: false, powerPreference: 'high-performance' });
   if (!gl) { root.classList.add('fallback'); return; }
-  const compile = (type, source) => { const s = gl.createShader(type); gl.shaderSource(s, source); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { console.error(gl.getShaderInfoLog(s)); gl.deleteShader(s); return null; } return s; };
-  const vertex = compile(gl.VERTEX_SHADER, VERTEX), fragment = compile(gl.FRAGMENT_SHADER, FRAGMENT), program = gl.createProgram();
-  if (!vertex || !fragment || !program) { root.classList.add('fallback'); return; }
-  gl.attachShader(program, vertex); gl.attachShader(program, fragment); gl.bindAttribLocation(program, 0, 'aPosition'); gl.linkProgram(program); gl.deleteShader(vertex); gl.deleteShader(fragment);
+  const compile = (type, source) => { const shader = gl.createShader(type); gl.shaderSource(shader, source); gl.compileShader(shader); if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) { console.error(gl.getShaderInfoLog(shader)); gl.deleteShader(shader); return null; } return shader; };
+  const vertex = compile(gl.VERTEX_SHADER, VERTEX), fragment = compile(gl.FRAGMENT_SHADER, FRAGMENT), program = vertex && fragment && gl.createProgram();
+  if (!program) { root.classList.add('fallback'); return; }
+  gl.attachShader(program, vertex); gl.attachShader(program, fragment); gl.linkProgram(program); gl.deleteShader(vertex); gl.deleteShader(fragment);
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) { console.error(gl.getProgramInfoLog(program)); root.classList.add('fallback'); return; }
-  const names = ['uResolution','uTime','uClock','uScale','uDetail','uGlow','uThickness','uSwirl','uFold','uBlackPoint','uBrightness','uBalance','uGrain','uOpacity','uOffset','uRotation','uDrift','uColors','uColorCount','uBackground','uOpaque','uLight','uReveal','uTrail','uTrailWeight','uTrailCount','uFlares','uFlareCount','uHeat'];
-  const u = {}; names.forEach(name => { u[name] = gl.getUniformLocation(program, name); });
-  const vao = gl.createVertexArray(); gl.bindVertexArray(vao); const buffer = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buffer); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,3,-1,-1,3]), gl.STATIC_DRAW); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0); gl.useProgram(program);
-  const palette = [[0.322,0.153,1],[1,0.624,0.988],[1,1,1]];
-  const colorData = new Float32Array(MAX_COLORS * 3), trailData = new Float32Array(TRAIL * 4), weightData = new Float32Array(TRAIL), flareData = new Float32Array(MAX_FLARES * 4);
-  const state = { width: 1, height: 1, time: 0.4, clock: 0, last: 0, raf: 0, introAt: -1, pointer: [0.5,0.5], inside: false, presence: 0, drift: [0,0], trail: [], flares: [] };
-  const settings = { speed: 0.35, scale: 4, detail: 3, glow: 1.6, thickness: 1, swirl: 1, fold: -0.2, blackPoint: 0.05, brightness: 1.3, balance: 0.5, drift: 0.3, grain: 0.05, opacity: 1, mouseStrength: 0.55 };
-  const resize = () => { const ratio = Math.min(window.devicePixelRatio || 1, 1.5); const width = Math.max(1, Math.round(root.clientWidth * ratio)), height = Math.max(1, Math.round(root.clientHeight * ratio)); if (width === state.width && height === state.height && canvas.width) return; state.width = width; state.height = height; canvas.width = width; canvas.height = height; };
-  const toView = point => [(point[0] - 0.5) * (state.width / Math.max(state.height, 1)), 0.5 - point[1]];
-  const render = () => {
-    const progress = clamp((state.clock - state.introAt) / 2.4, 0, 1);
-    const aspect = state.width / Math.max(state.height, 1);
-    gl.viewport(0, 0, state.width, state.height);
-    gl.uniform2f(u.uResolution, state.width, state.height);
-    gl.uniform1f(u.uTime, state.time); gl.uniform1f(u.uClock, state.clock);
-    gl.uniform1f(u.uScale, settings.scale); gl.uniform1f(u.uDetail, settings.detail); gl.uniform1f(u.uGlow, settings.glow * 0.1);
-    gl.uniform1f(u.uThickness, settings.thickness); gl.uniform1f(u.uSwirl, settings.swirl); gl.uniform1f(u.uFold, settings.fold);
-    gl.uniform1f(u.uBlackPoint, settings.blackPoint); gl.uniform1f(u.uBrightness, settings.brightness); gl.uniform1f(u.uBalance, settings.balance);
-    gl.uniform1f(u.uGrain, settings.grain); gl.uniform1f(u.uOpacity, settings.opacity);
-    gl.uniform2f(u.uOffset, 0, 0); gl.uniform2f(u.uRotation, 1, 0); gl.uniform2f(u.uDrift, state.drift[0], state.drift[1]);
-    colorData.fill(0); palette.forEach((rgb, index) => colorData.set(rgb, index * 3)); gl.uniform3fv(u.uColors, colorData); gl.uniform1i(u.uColorCount, palette.length);
-    gl.uniform3f(u.uBackground, 0.02, 0.024, 0.04); gl.uniform1f(u.uOpaque, 1); gl.uniform1f(u.uLight, 0);
-    gl.uniform3f(u.uReveal, Math.log(1.6) + Math.log(0.01 / 1.6) * progress, progress < 1 ? 1 : 0, progress);
-    trailData.fill(0); weightData.fill(0);
-    state.trail.forEach((point, index) => { const view = toView(point.at); trailData.set([view[0], view[1], state.clock - point.time, state.clock - point.arrive], index * 4); weightData[index] = point.weight; });
-    gl.uniform4fv(u.uTrail, trailData); gl.uniform1fv(u.uTrailWeight, weightData); gl.uniform1i(u.uTrailCount, state.trail.length);
-    flareData.fill(0); state.flares.forEach((flare, index) => { const view = toView(flare.at); flareData.set([view[0], view[1], state.clock - flare.time, 1], index * 4); });
-    gl.uniform4fv(u.uFlares, flareData); gl.uniform1i(u.uFlareCount, state.flares.length);
-    const heating = state.trail.length > 0 || state.flares.length > 0;
-    gl.uniform4f(u.uHeat, settings.mouseStrength * 2, 3.2, 0.2, heating ? 1 : 0);
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  const u = {}; for (let i = 0, n = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS); i < n; i++) { const info = gl.getActiveUniform(program, i); u[info.name] = gl.getUniformLocation(program, info.name); }
+  const vao = gl.createVertexArray(), buffer = gl.createBuffer();
+  gl.bindVertexArray(vao); gl.bindBuffer(gl.ARRAY_BUFFER, buffer); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 16, 0); gl.vertexAttribDivisor(0, 1);
+  const size = { width: 1, height: 1, ratio: 1 }, pointer = { x: 0, y: 0, inside: false }, lens = { x: 0, y: 0, vx: 0, vy: 0, presence: 0, ready: false };
+  let count = 0, time = Math.random() * 100, focus = 0, raf = 0, last = 0, layoutKey = '';
+  const buildDots = (width, height, step, margin) => {
+    const out = [], cx = width / 2, cy = height / 2, rowStep = step * Math.sqrt(3) / 2;
+    const cols = Math.ceil((width / 2 + margin) / step) + 1, rows = Math.ceil((height / 2 + margin) / rowStep) + 1;
+    for (let row = -rows; row <= rows; row++) for (let col = -cols; col <= cols; col++) {
+      const x = cx + col * step + ((row & 1) ? step / 2 : 0), y = cy + row * rowStep;
+      if (x >= -margin && x <= width + margin && y >= -margin && y <= height + margin) out.push(x, y, hash(col, row, 3), hash(col, row, 4));
+    }
+    return new Float32Array(out);
+  };
+  const layout = () => {
+    const margin = Math.ceil(settings.lens * 0.7 + settings.wave + settings.step * 2);
+    const area = (size.width + margin * 2) * (size.height + margin * 2);
+    const step = Math.max(settings.step, Math.sqrt(area / MAX_DOTS));
+    const key = size.width + '|' + size.height + '|' + step.toFixed(2);
+    if (key === layoutKey) return;
+    layoutKey = key;
+    const data = buildDots(size.width, size.height, step, margin);
+    count = data.length / 4;
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+  };
+  const resize = () => {
+    const rect = root.getBoundingClientRect();
+    const cssW = Math.max(1, rect.width), cssH = Math.max(1, rect.height);
+    const ratio = Math.min(window.devicePixelRatio || 1, 1.5, Math.sqrt(2.2e6 / (cssW * cssH)));
+    const w = Math.max(1, Math.round(cssW * ratio)), h = Math.max(1, Math.round(cssH * ratio));
+    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+    size.width = cssW; size.height = cssH; size.ratio = w / cssW; layout();
   };
 
-  const updateTrail = dt => {
-    const wanted = state.inside;
-    state.presence += ((wanted ? 1 : 0) - state.presence) * (1 - Math.exp(-dt / 0.25));
-    state.trail = state.trail.filter(point => point.live || state.clock - point.time < 0.9);
-    const head = state.trail[0];
-    if (!wanted) { if (head && head.live) head.live = false; return; }
-    if (!head || !head.live) state.trail.unshift({ at: state.pointer.slice(), time: state.clock, arrive: state.clock, weight: state.presence, live: true });
-    else {
-      const last = state.trail[1];
-      const gap = last ? Math.hypot(last.at[0] - head.at[0], last.at[1] - head.at[1]) : Infinity;
-      if (gap > 0.004 && (!last || state.clock - head.arrive > 0.06 || state.clock - last.time >= 0.06)) state.trail.splice(1, 0, { at: head.at.slice(), time: state.clock, arrive: head.arrive, weight: head.weight, live: false });
-      head.at = state.pointer.slice(); head.arrive = state.clock; head.time = state.clock; head.weight = state.presence;
-    }
-    if (state.trail.length > TRAIL) state.trail.length = TRAIL;
+  const frame = now => {
+    raf = requestAnimationFrame(frame);
+    if (document.hidden) { last = now; return; }
+    const dt = clamp((now - last) / 1000 || 0, 0, 0.05); last = now; time += dt * settings.speed; if (focus < 1) focus = Math.min(1, focus + dt / 1.8);
+    if (pointer.inside && (!lens.ready || lens.presence < 0.01)) { lens.x = pointer.x; lens.y = pointer.y; lens.vx = 0; lens.vy = 0; lens.ready = true; }
+    if (lens.ready) { const omega = 18, f = 1 + 2 * dt * omega, oo = omega * omega, hoo = dt * oo, hhoo = dt * hoo, inv = 1 / (f + hhoo); const nx = (f * lens.x + dt * lens.vx + hhoo * pointer.x) * inv, ny = (f * lens.y + dt * lens.vy + hhoo * pointer.y) * inv; lens.vx = (lens.vx + hoo * (pointer.x - lens.x)) * inv; lens.vy = (lens.vy + hoo * (pointer.y - lens.y)) * inv; lens.x = nx; lens.y = ny; }
+    const target = pointer.inside ? 1 : 0; lens.presence += (target - lens.presence) * (1 - Math.exp(-dt / (pointer.inside ? 0.18 : 0.4)));
+    const eased = focus < 0.5 ? 4 * focus * focus * focus : 1 - Math.pow(-2 * focus + 2, 3) / 2;
+    const presence = lens.presence * lens.presence * (3 - 2 * lens.presence);
+    const dir = [Math.sin(Math.PI * 0.75), -Math.cos(Math.PI * 0.75)];
+    const extent = Math.abs(size.width * dir[0]) + Math.abs(size.height * dir[1]);
+    gl.viewport(0, 0, canvas.width, canvas.height); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA); gl.useProgram(program); gl.bindVertexArray(vao);
+    gl.uniform2f(u.uSize, size.width, size.height); gl.uniform1f(u.uPixel, size.ratio); gl.uniform1f(u.uRadius, settings.radius); gl.uniform1f(u.uCell, settings.step);
+    gl.uniform4f(u.uLens, lens.x, lens.y, settings.lens, presence); gl.uniform2f(u.uWarp, settings.strength * 1.2, 0);
+    gl.uniform3f(u.uGlow, settings.glowRadius, settings.glowIntensity, 1);
+    gl.uniform3f(u.uFrom, settings.from[0], settings.from[1], settings.from[2]); gl.uniform3f(u.uTo, settings.to[0], settings.to[1], settings.to[2]);
+    gl.uniform4f(u.uGlowColor, settings.glow[0], settings.glow[1], settings.glow[2], 1); gl.uniform3f(u.uGradient, dir[0], dir[1], Math.max(extent, 1));
+    gl.uniform1f(u.uTime, time); gl.uniform1f(u.uWave, settings.wave); gl.uniform1f(u.uSparkle, settings.sparkle); gl.uniform1f(u.uFocus, eased); gl.uniform1f(u.uBase, settings.base); gl.uniform1f(u.uLight, 0); gl.uniform1f(u.uOpacity, 1);
+    if (count) gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, count);
   };
-  const tick = now => {
-    state.raf = requestAnimationFrame(tick);
-    if (document.hidden) { state.last = now; return; }
-    const dt = state.last ? Math.min((now - state.last) / 1000, 0.1) : 0;
-    state.last = now; state.clock += dt; if (state.introAt < 0) state.introAt = state.clock; state.time += dt * settings.speed;
-    const goalX = state.inside ? (state.pointer[0] - 0.5) * settings.drift * 2 : 0;
-    const goalY = state.inside ? (0.5 - state.pointer[1]) * settings.drift * 2 : 0;
-    const ease = 1 - Math.exp(-dt / 0.33);
-    state.drift[0] += (goalX - state.drift[0]) * ease; state.drift[1] += (goalY - state.drift[1]) * ease;
-    updateTrail(dt);
-    state.flares = state.flares.filter(flare => state.clock - flare.time < 1.8);
-    resize(); render();
-  };
-  const local = event => { const rect = root.getBoundingClientRect(); return { x: (event.clientX - rect.left) / Math.max(rect.width, 1), y: (event.clientY - rect.top) / Math.max(rect.height, 1), inside: event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom }; };
-  window.addEventListener('pointermove', event => { const point = local(event); state.inside = point.inside; if (point.inside) state.pointer = [point.x, point.y]; }, { passive: true });
-  window.addEventListener('pointerdown', event => { if (event.button !== 0) return; const target = event.target; if (target && target.closest && target.closest('a,button,input,textarea,select,label')) return; const point = local(event); if (!point.inside) return; state.flares.push({ at: [point.x, point.y], time: state.clock }); if (state.flares.length > MAX_FLARES) state.flares.shift(); }, { passive: true });
-  document.documentElement.addEventListener('pointerleave', () => { state.inside = false; });
+  const locate = event => { const rect = root.getBoundingClientRect(); return { x: event.clientX - rect.left, y: event.clientY - rect.top, inside: event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom }; };
+  window.addEventListener('pointermove', event => { const spot = locate(event); pointer.x = spot.x; pointer.y = spot.y; pointer.inside = spot.inside; }, { passive: true });
+  document.documentElement.addEventListener('pointerleave', () => { pointer.inside = false; });
   if (window.ResizeObserver) new ResizeObserver(resize).observe(root); else window.addEventListener('resize', resize);
-  resize(); state.raf = requestAnimationFrame(tick);
+  resize(); last = performance.now(); raf = requestAnimationFrame(frame);
 })();
 
 
