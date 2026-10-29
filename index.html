@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#f6f7f4">
 <meta name="app-version" content="1.0.0">
-<meta name="app-update-manifest" content="https://ccc2200ccc.github.io/stapp//main/version.json">
+<meta name="app-update-manifest" content="https://ccc2200ccc.github.io/stapp/version.json">
 
 <style>
 :root{
@@ -978,6 +978,7 @@ body:before,body:after{content:'';position:fixed;z-index:-1;border-radius:50%;fi
       </div>
 
       <p class="muted small center">配置与作品仅保存在浏览器本地</p>
+      <button class="ghost-btn" id="btnCheckUpdate" type="button" style="margin-top:14px">检查更新</button>
     </section>
 
   </main>
@@ -2621,15 +2622,15 @@ init();
  * 应用内更新
  * ============================================================ */
 const APP_VERSION = document.querySelector('meta[name="app-version"]')?.content || '1.0.0';
-const UPDATE_MANIFEST = document.querySelector('meta[name="app-update-manifest"]')?.content || '';
 const UPDATE_SKIP_KEY = 'ia_update_skip_v1';
-const UPDATE_HTML_KEY = 'ia_update_html_v1';
-const UPDATE_VERSION_KEY = 'ia_update_version_v1';
 let pendingUpdate = null;
 
+function normalizeUpdateUrl(url = '') {
+  return String(url).trim().replace(/([^:]\/)\/+/g, '$1').replace(/\/main(?=\/(?:index\.html|version\.json)(?:$|[?#]))/i, '');
+}
 function compareVersions(a = '', b = '') {
-  const left = String(a).split('.').map(n => parseInt(n, 10) || 0);
-  const right = String(b).split('.').map(n => parseInt(n, 10) || 0);
+  const left = String(a).replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0);
+  const right = String(b).replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0);
   const count = Math.max(left.length, right.length);
   for (let i = 0; i < count; i++) {
     if ((left[i] || 0) > (right[i] || 0)) return 1;
@@ -2647,51 +2648,39 @@ function showUpdateModal(info) {
   $('#updateNow .btn-text').textContent = '立即更新';
   $('#updateModal').classList.add('show');
 }
-async function applyDownloadedUpdate(version, html) {
-  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  localStorage.setItem(UPDATE_HTML_KEY, html);
-  localStorage.setItem(UPDATE_VERSION_KEY, version);
-  location.replace(url);
+function applyAppUpdate(version, pageUrl) {
+  const target = new URL(normalizeUpdateUrl(pageUrl), location.href);
+  target.searchParams.set('app_update', version);
+  target.searchParams.set('t', Date.now());
+  location.replace(target.href);
 }
-async function checkForAppUpdate() {
-  if (!UPDATE_MANIFEST || !navigator.onLine) return;
-  const savedHtml = localStorage.getItem(UPDATE_HTML_KEY);
-  const savedVersion = localStorage.getItem(UPDATE_VERSION_KEY);
-  if (savedHtml && savedVersion && compareVersions(savedVersion, APP_VERSION) > 0 && !location.href.startsWith('blob:')) {
-    await applyDownloadedUpdate(savedVersion, savedHtml);
-    return;
-  }
+async function checkForAppUpdate(manual = false) {
+  const manifest = normalizeUpdateUrl(document.querySelector('meta[name="app-update-manifest"]')?.content || '');
+  if (!manifest) { if (manual) toast('未配置更新地址'); return; }
   try {
-    const res = await fetch(UPDATE_MANIFEST + '?t=' + Date.now(), { cache: 'no-store' });
-    if (!res.ok) return;
+    const res = await fetch(manifest + (manifest.includes('?') ? '&' : '?') + 't=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) throw new Error('版本文件读取失败');
     const info = await res.json();
-    if (!info?.version || !info?.url || compareVersions(info.version, APP_VERSION) <= 0) return;
-    if (localStorage.getItem(UPDATE_SKIP_KEY) === info.version) return;
-    showUpdateModal(info);
-  } catch {}
+    const pageUrl = normalizeUpdateUrl(info.url || '');
+    if (!info?.version || !pageUrl) throw new Error('版本文件格式不正确');
+    if (compareVersions(info.version, APP_VERSION) <= 0) { if (manual) toast('当前已是最新版本'); return; }
+    if (!manual && localStorage.getItem(UPDATE_SKIP_KEY) === info.version) return;
+    showUpdateModal({ ...info, url: pageUrl });
+  } catch (error) {
+    if (manual) toast(error.message || '检查更新失败');
+  }
 }
 $('#updateLater').addEventListener('click', () => {
   if (pendingUpdate?.version) localStorage.setItem(UPDATE_SKIP_KEY, pendingUpdate.version);
   $('#updateModal').classList.remove('show');
 });
-$('#updateNow').addEventListener('click', async () => {
+$('#updateNow').addEventListener('click', () => {
   if (!pendingUpdate?.url) return;
-  const button = $('#updateNow');
-  button.disabled = true;
-  button.querySelector('.btn-text').textContent = '正在下载…';
-  try {
-    const res = await fetch(pendingUpdate.url + '?t=' + Date.now(), { cache: 'no-store' });
-    if (!res.ok) throw new Error('download failed');
-    const html = await res.text();
-    if (!/<html[\s>]/i.test(html)) throw new Error('invalid html');
-    await applyDownloadedUpdate(pendingUpdate.version, html);
-  } catch {
-    button.disabled = false;
-    button.querySelector('.btn-text').textContent = '立即更新';
-    toast('更新下载失败，请稍后重试');
-  }
+  $('#updateNow').disabled = true;
+  $('#updateNow .btn-text').textContent = '正在更新…';
+  applyAppUpdate(pendingUpdate.version, pendingUpdate.url);
 });
+$('#btnCheckUpdate')?.addEventListener('click', () => checkForAppUpdate(true));
 checkForAppUpdate();
 
 </script>

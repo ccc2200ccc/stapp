@@ -1,5 +1,6 @@
 {
-  "version": "1.0.5",
-  "url": "https://ccc2200ccc.github.io/stapp//main/index.html",
-  "notes": "界面与功能更新"
+  "version": "1.0.6",
+  "url": "https://ccc2200ccc.github.io/stapp/index.html",
+  "notes": "修复应用内更新检查"
 }
+
