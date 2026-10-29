@@ -4,7 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#f6f7f4">
-<title>灵境 · AI 生图工作台</title>
+<meta name="app-version" content="1.0.0">
+<meta name="app-update-manifest" content="https://ccc2200ccc.github.io/stapp//main/version.json">
+
 <style>
 :root{
   --bg:#f7f6f4;
@@ -649,9 +651,11 @@ button:focus-visible,a:focus-visible{outline:3px solid #97b69d;outline-offset:4p
 .canvas-info-card{position:absolute;z-index:3;left:14px;right:14px;bottom:14px;padding:16px 17px;border:1px solid rgba(255,255,255,.68);border-radius:15px;background:rgba(248,252,248,.8);color:#233c34;box-shadow:0 10px 28px rgba(10,25,16,.16),inset 0 1px rgba(255,255,255,.7);backdrop-filter:blur(18px) saturate(145%);-webkit-backdrop-filter:blur(18px) saturate(145%)}.canvas-info-card[hidden]{display:none}.canvas-info-prompt{display:block;max-height:5.4em;overflow:auto;margin:0 0 12px;font-size:12px;font-weight:600;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}.canvas-info-meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;color:#607466;font-size:10px}.canvas-info-meta span{padding:4px 8px;border:1px solid rgba(70,111,80,.14);border-radius:7px;background:rgba(255,255,255,.5)}
 @media(max-width:760px){.hist-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.hist-item{border-radius:15px}.hist-glass{left:7px;right:7px;bottom:7px;padding:10px;border-radius:12px}.hist-prompt{font-size:11px}.hist-meta{font-size:9px;flex-wrap:wrap}.hist-detail-btn{min-height:32px;margin-top:8px}}
 @media(prefers-reduced-motion:reduce){.hist-item,.hist-item>img,.hist-detail-btn{transition:none}}
-/* Apple-like liquid glass navigation. */
-.bottom-nav{position:relative;align-self:stretch;margin:14px 10px;padding:18px 10px 14px;border:1px solid rgba(255,255,255,.38);border-radius:32px;background:transparent;box-shadow:inset 0 1px rgba(255,255,255,.42),inset 0 -1px rgba(255,255,255,.12);backdrop-filter:blur(34px) saturate(190%);-webkit-backdrop-filter:blur(34px) saturate(190%);overflow:hidden}
-.bottom-nav:before{content:'';position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,rgba(255,255,255,.06),transparent 36%);border-radius:inherit}
+/* Apple-like liquid glass navigation: blur + refraction + specular + edge lensing. */
+@keyframes liquidSheen{0%,100%{background-position:170% 0,0 0}50%{background-position:-70% 0,0 0}}
+.bottom-nav{position:relative;isolation:isolate;align-self:stretch;margin:14px 10px;padding:18px 10px 14px;border:1px solid rgba(255,255,255,.26);border-radius:32px;background:transparent;box-shadow:inset 0 1px 1px rgba(255,255,255,.5),inset 0 -1px 1px rgba(255,255,255,.16),inset 0 14px 24px -18px rgba(255,255,255,.7),0 10px 30px -18px rgba(24,48,34,.45);backdrop-filter:blur(30px) saturate(200%) brightness(1.06);-webkit-backdrop-filter:blur(30px) saturate(200%) brightness(1.06);overflow:hidden}
+.bottom-nav:before{content:'';position:absolute;inset:0;z-index:0;pointer-events:none;border-radius:inherit;background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,.3) 45%,rgba(255,255,255,.06) 56%,transparent 68%),linear-gradient(180deg,rgba(255,255,255,.13),transparent 38%);background-size:220% 100%,100% 100%;animation:liquidSheen 10s ease-in-out infinite}
+.bottom-nav:after{content:'';position:absolute;inset:0;z-index:2;pointer-events:none;border-radius:inherit;padding:1px;background:linear-gradient(145deg,rgba(255,255,255,.85),rgba(255,255,255,.08) 30%,rgba(255,255,255,.02) 60%,rgba(255,255,255,.55));-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude}
 .studio-brand,.nav-caption,.nav-btn,.sidebar-note,.sidebar-footer{position:relative;z-index:1}
 .studio-mark{background:rgba(48,93,72,.82);box-shadow:inset 0 1px rgba(255,255,255,.45),0 8px 18px rgba(48,93,72,.18)}
 .nav-btn{border:1px solid transparent;background:transparent;border-radius:18px;transition:background .28s cubic-bezier(.2,.8,.2,1),border-color .28s,transform .28s,box-shadow .28s}
@@ -662,10 +666,12 @@ button:focus-visible,a:focus-visible{outline:3px solid #97b69d;outline-offset:4p
 .nav-btn.active:after{display:none}
 .sidebar-note{background:rgba(255,255,255,.34);border-color:rgba(255,255,255,.62);box-shadow:inset 0 1px rgba(255,255,255,.7)}
 @media(max-width:760px){
-  .bottom-nav{order:3;position:fixed;left:12px;right:12px;bottom:12px;z-index:30;display:grid;grid-template-columns:repeat(5,1fr);gap:2px;margin:0;padding:6px 6px calc(6px + env(safe-area-inset-bottom));border:1px solid rgba(255,255,255,.34);border-radius:28px;background:transparent;box-shadow:inset 0 1px rgba(255,255,255,.36);backdrop-filter:blur(36px) saturate(200%);-webkit-backdrop-filter:blur(36px) saturate(200%)}
+  .bottom-nav{order:3;position:fixed;left:10px;right:10px;bottom:10px;z-index:30;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));align-items:center;gap:2px;height:68px;margin:0;padding:6px;overflow:hidden;border:1px solid rgba(255,255,255,.26);border-radius:24px;background:transparent;box-shadow:inset 0 1px 1px rgba(255,255,255,.5),inset 0 -1px 1px rgba(255,255,255,.16),inset 0 12px 20px -16px rgba(255,255,255,.7),0 10px 26px -16px rgba(24,48,34,.45);backdrop-filter:blur(32px) saturate(200%) brightness(1.06);-webkit-backdrop-filter:blur(32px) saturate(200%) brightness(1.06)}
   #views{padding-bottom:96px}
-  .nav-btn{min-height:56px;flex-direction:column;gap:3px;border:1px solid transparent;border-radius:22px;font-size:10px;color:#6f8278}.nav-btn:hover:not(.active){transform:none;background:rgba(255,255,255,.28)}
-  .nav-ico{width:34px;height:28px;flex-basis:28px;border:0;border-radius:12px;background:transparent;box-shadow:none}
+  .nav-btn{width:100%;height:56px;min-height:0;max-width:100%;box-sizing:border-box;flex-direction:column;justify-content:center;gap:2px;padding:4px 1px;overflow:hidden;border:1px solid transparent;border-radius:16px;font-size:9px;line-height:1.1;white-space:nowrap;color:#6f8278}.nav-btn:hover:not(.active){transform:none;background:rgba(255,255,255,.16)}
+  .nav-btn span:last-child{max-width:100%;overflow:hidden;text-overflow:ellipsis}
+  .nav-ico{width:22px;height:20px;flex:0 0 20px;border:0;border-radius:8px;background:transparent;box-shadow:none}
+  .nav-btn svg{width:16px;height:16px}
   .nav-btn.active{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.24);color:#24553d;box-shadow:inset 0 1px rgba(255,255,255,.28)}
   .nav-btn.active .nav-ico{background:transparent;box-shadow:none;color:#2f6d4b}.studio-brand,.nav-caption,.sidebar-note,.sidebar-footer{display:none}
 }
@@ -693,9 +699,31 @@ body:before,body:after{content:'';position:fixed;z-index:-1;border-radius:50%;fi
 @media(max-width:760px){.prompt-library-card{padding:14px;border-radius:17px}.prompt-library-head{display:block}.prompt-library-actions{margin-top:12px}.prompt-library-frame-wrap{height:390px}.prompt-library-fallback{left:8px;right:8px;text-align:center}}
 @media(prefers-reduced-transparency:reduce){body{background:var(--bg)}.card,.gen-card,.canvas-panel,.prompt-card,.case-card,.modal-card{backdrop-filter:none;-webkit-backdrop-filter:none;background:var(--surface)}}
 #bottomNav.bottom-nav{background:transparent!important;background-color:transparent!important;backdrop-filter:blur(46px) saturate(220%)!important;-webkit-backdrop-filter:blur(46px) saturate(220%)!important}
+/* True refraction: warp the backdrop with an SVG displacement map where supported. */
+@supports (backdrop-filter:url("#liquidRefraction")){
+  #bottomNav.bottom-nav{backdrop-filter:blur(9px) saturate(200%) brightness(1.05) url(#liquidRefraction)!important;-webkit-backdrop-filter:blur(9px) saturate(200%) brightness(1.05) url(#liquidRefraction)!important}
+}
+.liquid-filter-defs{position:absolute;width:0;height:0;overflow:hidden;pointer-events:none}
+@media(prefers-reduced-motion:reduce){.bottom-nav:before{animation:none}}
+#updateModal{position:fixed;inset:0;z-index:80;display:none;align-items:flex-end;justify-content:center;padding:16px;background:rgba(18,28,22,.28);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+#updateModal.show{display:flex}
+.update-card{width:min(420px,100%);margin-bottom:78px;padding:22px 20px 18px;border:1px solid rgba(255,255,255,.62);border-radius:22px;background:rgba(252,253,251,.82);box-shadow:0 18px 50px rgba(18,39,27,.18);backdrop-filter:blur(24px) saturate(160%);-webkit-backdrop-filter:blur(24px) saturate(160%)}
+.update-kicker{font-size:10px;letter-spacing:.16em;color:#7d907f}
+.update-card h3{margin:7px 0 8px;font-size:20px;letter-spacing:-.03em}
+.update-card p{margin:0;color:#5d6d62;font-size:13px;line-height:1.7}
+.update-notes{max-height:120px;margin-top:12px;overflow:auto;white-space:pre-wrap;color:#31483b}
+.update-actions{display:flex;gap:10px;margin-top:16px}.update-actions button{flex:1}
+@media(min-width:761px){#updateModal{align-items:center}.update-card{margin:0}}
 </style>
 </head>
 <body>
+<svg class="liquid-filter-defs" width="0" height="0" aria-hidden="true" focusable="false"><defs>
+  <filter id="liquidRefraction" x="-15%" y="-15%" width="130%" height="130%" color-interpolation-filters="sRGB">
+    <feTurbulence type="fractalNoise" baseFrequency="0.004 0.009" numOctaves="3" seed="11" result="noise"/>
+    <feGaussianBlur in="noise" stdDeviation="1.6" result="softNoise"/>
+    <feDisplacementMap in="SourceGraphic" in2="softNoise" scale="22" xChannelSelector="R" yChannelSelector="G"/>
+  </filter>
+</defs></svg>
 <div class="app">
 
   <header class="topbar">
@@ -1024,6 +1052,19 @@ body:before,body:after{content:'';position:fixed;z-index:-1;border-radius:50%;fi
     <div class="v-actions">
       <button class="v-action-btn" id="viewerDetailBtn">详情</button>
       <button class="v-action-btn" id="viewerDownloadBtn">下载</button>
+    </div>
+  </div>
+</div>
+
+<div id="updateModal" role="dialog" aria-modal="true" aria-labelledby="updateTitle">
+  <div class="update-card">
+    <div class="update-kicker">APP UPDATE</div>
+    <h3 id="updateTitle">发现新版本</h3>
+    <p id="updateMessage">有新版本可以更新。</p>
+    <div class="update-notes" id="updateNotes" hidden></div>
+    <div class="update-actions">
+      <button class="chip-btn" id="updateLater" type="button">稍后</button>
+      <button class="primary-btn" id="updateNow" type="button"><span class="btn-text">立即更新</span></button>
     </div>
   </div>
 </div>
@@ -2575,6 +2616,84 @@ document.addEventListener('keydown', e => {
 });
 
 init();
+
+/* ============================================================
+ * 应用内更新
+ * ============================================================ */
+const APP_VERSION = document.querySelector('meta[name="app-version"]')?.content || '1.0.0';
+const UPDATE_MANIFEST = document.querySelector('meta[name="app-update-manifest"]')?.content || '';
+const UPDATE_SKIP_KEY = 'ia_update_skip_v1';
+const UPDATE_HTML_KEY = 'ia_update_html_v1';
+const UPDATE_VERSION_KEY = 'ia_update_version_v1';
+let pendingUpdate = null;
+
+function compareVersions(a = '', b = '') {
+  const left = String(a).split('.').map(n => parseInt(n, 10) || 0);
+  const right = String(b).split('.').map(n => parseInt(n, 10) || 0);
+  const count = Math.max(left.length, right.length);
+  for (let i = 0; i < count; i++) {
+    if ((left[i] || 0) > (right[i] || 0)) return 1;
+    if ((left[i] || 0) < (right[i] || 0)) return -1;
+  }
+  return 0;
+}
+function showUpdateModal(info) {
+  pendingUpdate = info;
+  $('#updateTitle').textContent = `发现新版本 ${info.version}`;
+  $('#updateMessage').textContent = `当前版本 ${APP_VERSION}，可在应用内更新到 ${info.version}。`;
+  $('#updateNotes').hidden = !info.notes;
+  $('#updateNotes').textContent = info.notes || '';
+  $('#updateNow').disabled = false;
+  $('#updateNow .btn-text').textContent = '立即更新';
+  $('#updateModal').classList.add('show');
+}
+async function applyDownloadedUpdate(version, html) {
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  localStorage.setItem(UPDATE_HTML_KEY, html);
+  localStorage.setItem(UPDATE_VERSION_KEY, version);
+  location.replace(url);
+}
+async function checkForAppUpdate() {
+  if (!UPDATE_MANIFEST || !navigator.onLine) return;
+  const savedHtml = localStorage.getItem(UPDATE_HTML_KEY);
+  const savedVersion = localStorage.getItem(UPDATE_VERSION_KEY);
+  if (savedHtml && savedVersion && compareVersions(savedVersion, APP_VERSION) > 0 && !location.href.startsWith('blob:')) {
+    await applyDownloadedUpdate(savedVersion, savedHtml);
+    return;
+  }
+  try {
+    const res = await fetch(UPDATE_MANIFEST + '?t=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) return;
+    const info = await res.json();
+    if (!info?.version || !info?.url || compareVersions(info.version, APP_VERSION) <= 0) return;
+    if (localStorage.getItem(UPDATE_SKIP_KEY) === info.version) return;
+    showUpdateModal(info);
+  } catch {}
+}
+$('#updateLater').addEventListener('click', () => {
+  if (pendingUpdate?.version) localStorage.setItem(UPDATE_SKIP_KEY, pendingUpdate.version);
+  $('#updateModal').classList.remove('show');
+});
+$('#updateNow').addEventListener('click', async () => {
+  if (!pendingUpdate?.url) return;
+  const button = $('#updateNow');
+  button.disabled = true;
+  button.querySelector('.btn-text').textContent = '正在下载…';
+  try {
+    const res = await fetch(pendingUpdate.url + '?t=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) throw new Error('download failed');
+    const html = await res.text();
+    if (!/<html[\s>]/i.test(html)) throw new Error('invalid html');
+    await applyDownloadedUpdate(pendingUpdate.version, html);
+  } catch {
+    button.disabled = false;
+    button.querySelector('.btn-text').textContent = '立即更新';
+    toast('更新下载失败，请稍后重试');
+  }
+});
+checkForAppUpdate();
+
 </script>
 </body>
 </html>
