@@ -609,13 +609,15 @@ button:focus-visible,a:focus-visible{outline:3px solid #97b69d;outline-offset:4p
   outline:3px solid #97b69d;outline-offset:3px
 }
 /* Generation progress: animated fill, shimmer, and readable live status. */
-#btnGenerate{isolation:isolate;overflow:hidden;min-height:56px}
-#btnGenerate .btn-fill{z-index:0;width:0;border-radius:inherit;background:linear-gradient(100deg,#6c9a73 0%,#7eaa79 48%,#a8c78b 100%);transition:width .55s cubic-bezier(.22,1,.36,1)}
+#btnGenerate{isolation:isolate;overflow:hidden;min-height:56px;border-radius:32px!important;border:1px solid rgba(255,255,255,.28)!important;background:rgba(28,28,30,.18)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.42),inset 0 -8px 14px rgba(0,0,0,.12),0 10px 22px rgba(0,0,0,.16)!important;backdrop-filter:blur(14px) saturate(150%)!important;-webkit-backdrop-filter:blur(14px) saturate(150%)!important}
+#btnGenerate:hover:not(:disabled){background:rgba(28,28,30,.28)!important}
+#btnGenerate .btn-text,#btnGenerate .gen-percent,#btnGenerate .gen-status{color:#fff!important;text-shadow:none}
+#btnGenerate .btn-fill{z-index:0;width:0;border-radius:inherit;background:linear-gradient(100deg,rgba(255,255,255,.16),rgba(255,255,255,.32));transition:width .55s cubic-bezier(.22,1,.36,1)}
 #btnGenerate .btn-fill:after{content:'';position:absolute;inset:0;background:linear-gradient(105deg,transparent 25%,rgba(255,255,255,.2) 45%,rgba(255,255,255,.54) 50%,rgba(255,255,255,.2) 55%,transparent 75%);transform:translateX(-100%);opacity:0}
 #btnGenerate.loading .btn-fill:after{opacity:1;animation:progressShimmer 1.8s ease-in-out infinite}
 @keyframes progressShimmer{to{transform:translateX(100%)}}
 .wave-loader{position:absolute;z-index:2;left:22px;top:50%;width:46px;height:28px;opacity:0;pointer-events:none;transform:translateY(-50%) scale(.75);transition:opacity .22s ease,transform .3s cubic-bezier(.22,1,.36,1)}
-.wave-bars{position:absolute;left:0;bottom:2px;display:flex;align-items:flex-end;gap:1px;width:46px;height:28px}.wave-bars i{display:block;width:3px;height:4px;border-radius:999px;background:#fff;transform-origin:center bottom}.wave-ball{position:absolute;left:0;bottom:2px;width:4px;height:4px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.25)}
+.wave-bars{position:absolute;left:0;bottom:2px;display:flex;align-items:flex-end;gap:1px;width:46px;height:28px}.wave-bars i{display:block;width:3px;height:4px;border-radius:999px;background:#fff;transform-origin:center bottom}.wave-ball{position:absolute;left:0;bottom:2px;width:4px;height:4px;border-radius:50%;background:#fff;box-shadow:0 0 6px rgba(255,255,255,.65)}
 #btnGenerate.loading .wave-loader{opacity:1;transform:translateY(-50%) scale(1)}
 #btnGenerate .btn-text{z-index:3;transition:opacity .2s}
 #btnGenerate.loading .btn-text{opacity:0;visibility:hidden}
@@ -623,7 +625,7 @@ button:focus-visible,a:focus-visible{outline:3px solid #97b69d;outline-offset:4p
 #btnGenerate.loading .gen-percent{opacity:1;transform:translate(-50%,0)}
 .gen-status{position:absolute;z-index:4;left:50%;top:72%;color:rgba(255,255,255,.9);font-size:9px;font-weight:500;letter-spacing:.13em;white-space:nowrap;opacity:0;transform:translate(-50%,3px);transition:opacity .2s,transform .2s}
 #btnGenerate.loading .gen-status{opacity:1;transform:translate(-50%,0)}
-#btnGenerate.complete .btn-fill{background:linear-gradient(100deg,#4e8d62,#74aa76)}
+#btnGenerate.complete .btn-fill{background:linear-gradient(100deg,rgba(255,255,255,.28),rgba(255,255,255,.46))}
 #btnGenerate.error .btn-fill{background:linear-gradient(100deg,#b85d50,#d27a69)}
 .v-nav-btn:focus-visible{outline:3px solid #a8d6ac;outline-offset:3px}
 @media(prefers-reduced-motion:reduce){#btnGenerate .btn-fill,.gen-percent,.gen-status,.wave-loader{transition:none}.wave-bars i{height:12px!important}.wave-ball{display:none}#btnGenerate.loading .btn-fill:after{animation:none}}
@@ -671,7 +673,7 @@ button:focus-visible,a:focus-visible{outline:3px solid #97b69d;outline-offset:4p
   .nav-btn.active{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.24);color:#24553d;box-shadow:inset 0 1px rgba(255,255,255,.28)}
   .nav-btn.active .nav-ico{background:transparent;box-shadow:none;color:#2f6d4b}.studio-brand,.nav-caption,.sidebar-note,.sidebar-footer{display:none}
 }
-@media(prefers-reduced-transparency:reduce){.bottom-nav{backdrop-filter:none;-webkit-backdrop-filter:none;background:rgba(42,42,44,.55)}}
+@media(prefers-reduced-transparency:reduce){.bottom-nav{backdrop-filter:none;-webkit-backdrop-filter:none;background:rgba(42,42,44,.32)}}
 
 /* Global frosted-glass visual system. */
 body{position:relative;isolation:isolate;background:#dfe9e1;background-image:radial-gradient(circle at 12% 8%,rgba(255,255,255,.9) 0,rgba(255,255,255,0) 34%),radial-gradient(circle at 88% 84%,rgba(174,211,185,.42) 0,rgba(174,211,185,0) 38%),linear-gradient(135deg,#eaf2eb,#d8e6dc 55%,#edf3eb)}
@@ -694,10 +696,10 @@ body:before,body:after{content:'';position:fixed;z-index:-1;border-radius:50%;fi
 .prompt-library-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:14px}.prompt-library-kicker{display:block;margin-bottom:6px;color:#78917e;font-size:9px;font-weight:700;letter-spacing:.14em}.prompt-library-head h2{margin:0 0 5px;color:var(--text);font-size:17px}.prompt-library-head p{margin:0;color:var(--muted);font-size:11px;line-height:1.7}.prompt-library-actions{display:flex;gap:8px;flex:0 0 auto}.prompt-library-frame-wrap{position:relative;height:220px;overflow:hidden;border:1px dashed rgba(120,140,130,.45);border-radius:14px;background:rgba(255,255,255,.4)}.prompt-library-frame-wrap iframe{width:100%;height:100%;border:0;background:#fff}.prompt-library-fallback{position:absolute;right:10px;bottom:10px;padding:7px 10px;border:1px solid rgba(255,255,255,.75);border-radius:9px;background:rgba(245,251,246,.78);color:#718078;font-size:10px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
 @media(max-width:760px){.prompt-library-card{padding:14px;border-radius:17px}.prompt-library-head{display:block}.prompt-library-actions{margin-top:12px}.prompt-library-frame-wrap{height:180px}.prompt-library-fallback{left:8px;right:8px;text-align:center}}
 @media(prefers-reduced-transparency:reduce){body{background:var(--bg)}.card,.gen-card,.canvas-panel,.prompt-card,.case-card,.modal-card{backdrop-filter:none;-webkit-backdrop-filter:none;background:var(--surface)}}
-#bottomNav.bottom-nav{background:rgba(28,28,30,.32)!important;background-color:rgba(28,28,30,.32)!important;background-image:none!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.34),0 10px 26px -16px rgba(0,0,0,.35)!important;backdrop-filter:blur(22px) saturate(160%)!important;-webkit-backdrop-filter:blur(22px) saturate(160%)!important}
+#bottomNav.bottom-nav{background:rgba(28,28,30,.18)!important;background-color:rgba(28,28,30,.18)!important;background-image:none!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.34),0 10px 26px -16px rgba(0,0,0,.35)!important;backdrop-filter:blur(16px) saturate(150%)!important;-webkit-backdrop-filter:blur(16px) saturate(150%)!important}
 #bottomNav.bottom-nav:before{content:none!important;display:none!important;background:none!important}
 @supports (backdrop-filter:url("#liquidRefraction")){
-  #bottomNav.bottom-nav{background:rgba(28,28,30,.32)!important;backdrop-filter:blur(16px) saturate(160%) url(#liquidRefraction)!important;-webkit-backdrop-filter:blur(16px) saturate(160%) url(#liquidRefraction)!important}
+  #bottomNav.bottom-nav{background:rgba(28,28,30,.18)!important;backdrop-filter:blur(12px) saturate(150%) url(#liquidRefraction)!important;-webkit-backdrop-filter:blur(12px) saturate(150%) url(#liquidRefraction)!important}
 }
 .liquid-filter-defs{position:absolute;width:0;height:0;overflow:hidden;pointer-events:none}
 @media(prefers-reduced-motion:reduce){.bottom-nav:before{animation:none}}
@@ -705,7 +707,7 @@ body:before,body:after{content:'';position:fixed;z-index:-1;border-radius:50%;fi
 .app{display:block!important;background:transparent!important;overflow:hidden!important}
 #views{position:absolute!important;inset:0!important;grid-column:auto!important;grid-row:auto!important;background:transparent!important;padding:16px 16px 0!important;overflow:hidden!important}
 .view.active{padding-bottom:118px!important}
-#bottomNav.bottom-nav{position:fixed!important;left:12px!important;right:12px!important;bottom:max(12px,env(safe-area-inset-bottom))!important;top:auto!important;z-index:40!important;display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;grid-column:auto!important;grid-row:auto!important;align-items:center!important;width:auto!important;height:76px!important;margin:0!important;padding:7px!important;overflow:visible!important;border:1px solid rgba(255,255,255,.28)!important;border-radius:32px!important;background:rgba(28,28,30,.32)!important;background-color:rgba(28,28,30,.32)!important;background-image:none!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.42),inset 0 -8px 14px rgba(0,0,0,.12),inset 0 0 0 1px rgba(255,255,255,.08),0 10px 22px rgba(0,0,0,.16)!important;backdrop-filter:blur(20px) saturate(165%) url(#liquidRefraction)!important;-webkit-backdrop-filter:blur(20px) saturate(165%) url(#liquidRefraction)!important}
+#bottomNav.bottom-nav{position:fixed!important;left:12px!important;right:12px!important;bottom:max(12px,env(safe-area-inset-bottom))!important;top:auto!important;z-index:40!important;display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;grid-column:auto!important;grid-row:auto!important;align-items:center!important;width:auto!important;height:76px!important;margin:0!important;padding:7px!important;overflow:visible!important;border:1px solid rgba(255,255,255,.28)!important;border-radius:32px!important;background:rgba(28,28,30,.18)!important;background-color:rgba(28,28,30,.18)!important;background-image:none!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.42),inset 0 -8px 14px rgba(0,0,0,.12),inset 0 0 0 1px rgba(255,255,255,.08),0 10px 22px rgba(0,0,0,.16)!important;backdrop-filter:blur(14px) saturate(150%) url(#liquidRefraction)!important;-webkit-backdrop-filter:blur(14px) saturate(150%) url(#liquidRefraction)!important}
 #bottomNav.bottom-nav:before{content:''!important;display:block!important;position:absolute!important;inset:0!important;border-radius:inherit!important;padding:1.5px!important;background:linear-gradient(145deg,rgba(255,255,255,.42),rgba(255,255,255,.04) 34%,rgba(255,255,255,.02) 62%,rgba(255,255,255,.22))!important;-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0)!important;-webkit-mask-composite:xor!important;mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0)!important;mask-composite:exclude!important;pointer-events:none!important}
 #bottomNav.bottom-nav:after{content:none!important;display:none!important}
 #bottomNav .nav-btn.active:before{content:none!important;display:none!important}
@@ -939,6 +941,7 @@ body:before,body:after{display:none!important;content:none!important}
 
     <!-- ========== 设置 ========== -->
     <section id="view-settings" class="view">
+
       <div class="card">
         <div class="section-head" style="margin-bottom:18px">
           <h2>API 配置</h2>
@@ -1540,7 +1543,7 @@ function animateWavePhysics(now) {
   const t = (now % 4000) / 4000, x = t < .5 ? t / .5 : (1 - t) / .5, idx = x * 14;
   let bf = (x * 4) % 1; if (x === 0 || x === 1) bf = 0;
   const bh = 4 * bf * (1 - bf), hf = Math.max(0, 1 - bh * 2);
-  bars.forEach((bar, i) => { const d = Math.abs(i - idx), w = d < 3 ? Math.cos(d / 3 * Math.PI / 2) : 0, ind = d < 1.5 ? Math.cos(d / 1.5 * Math.PI / 2) * hf * 20 : 0; const h = Math.max(4, 16 + w * 48 - ind) * .24, c = Math.round(228 - w * 189); bar.style.height = h + 'px'; bar.style.background = 'rgb(' + c + ',' + c + ',' + Math.round(231 - w * 189) + ')'; });
+  bars.forEach((bar, i) => { const d = Math.abs(i - idx), w = d < 3 ? Math.cos(d / 3 * Math.PI / 2) : 0, ind = d < 1.5 ? Math.cos(d / 1.5 * Math.PI / 2) * hf * 20 : 0; const h = Math.max(4, 16 + w * 48 - ind) * .24; bar.style.height = h + 'px'; bar.style.background = '#fff'; });
   const y = (64 - hf * 20) + bh * 60; ball.style.transform = 'translate(' + (idx * 5) + 'px,-' + (y * .24) + 'px) scale(' + (1 + hf * .25) + ',' + (1 - hf * .3) + ')'; waveFrame = requestAnimationFrame(animateWavePhysics);
 }
 function startWavePhysics(){ cancelAnimationFrame(waveFrame); waveFrame=requestAnimationFrame(animateWavePhysics); }
@@ -2474,7 +2477,6 @@ function updateProviderUI() {
 }
 
 $('#cfgProvider').addEventListener('change', updateProviderUI);
-
 $('#btnSaveCfg').addEventListener('click', async () => {
   const provider = $('#cfgProvider').value;
   const baseUrl = $('#cfgBaseUrl').value.trim();
