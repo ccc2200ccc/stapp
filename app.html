@@ -785,7 +785,22 @@ body:before,body:after{display:none!important;content:none!important}
 .viewer-card-actions{display:flex!important;flex-wrap:nowrap!important;align-items:center!important;justify-content:center!important;gap:8px!important}.viewer-card-actions .v-icon-btn,.viewer-card-actions .v-nav-btn{width:42px!important;min-width:42px!important;height:42px!important;flex:0 0 42px!important;margin:0!important}.viewer-card-actions .v-action-btn{width:auto!important;min-width:64px!important;height:42px!important;flex:0 0 auto!important;padding:0 14px!important}
 .viewer-card .v-nav-btn,.viewer-card .v-action-btn{border-color:rgba(255,255,255,.68);background:rgba(255,255,255,.42);color:#17211c}
 .viewer-card .v-pager{color:#314038}
-.v-zoom-group,#viewerInfo,#viewerDetailBtn{display:none!important}
+@media(max-width:760px){
+  #view-generate.active{display:flex!important;flex-direction:column!important;gap:10px!important;overflow-y:auto!important;padding-bottom:108px!important}
+  #view-generate.active .canvas-panel{order:1!important;width:100%!important;min-height:0!important;padding:10px!important;gap:8px!important}
+  #view-generate.active .canvas-stage{min-height:210px!important;height:34dvh!important}
+  #view-generate.active .gen-card{order:2!important;width:100%!important;padding:12px!important;gap:8px!important}
+  #view-generate.active .gen-textarea{min-height:78px!important;height:78px!important}
+  #view-generate.active .ratio-block{grid-template-columns:1fr!important}
+  #view-generate.active .ratio-group,#view-generate.active .count-item{grid-column:1!important;width:100%!important}
+  .viewer-stage{padding:12px 8px 168px!important}
+  .viewer-card{left:8px!important;right:8px!important;padding:12px!important}
+  .viewer-card-prompt{max-height:58px!important;margin-bottom:8px!important}
+  .viewer-card-meta{margin-bottom:8px!important}
+  .viewer-card-actions{gap:6px!important}
+  .viewer-card-actions .v-icon-btn,.viewer-card-actions .v-nav-btn{width:36px!important;min-width:36px!important;height:36px!important;flex-basis:36px!important}
+  .viewer-card-actions .v-action-btn{min-width:54px!important;height:36px!important;padding:0 10px!important}
+}
 @keyframes flowDrift{0%,100%{background-position:0% 20%}50%{background-position:100% 80%}}
 </style>
 </head>
