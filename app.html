@@ -801,6 +801,14 @@ body:before,body:after{display:none!important;content:none!important}
   .viewer-card-actions .v-icon-btn,.viewer-card-actions .v-nav-btn{width:36px!important;min-width:36px!important;height:36px!important;flex-basis:36px!important}
   .viewer-card-actions .v-action-btn{min-width:54px!important;height:36px!important;padding:0 10px!important}
 }
+
+.status-liquid-btn{width:100%;height:84px;margin-bottom:16px;border:1px solid rgba(255,255,255,.55);border-radius:32px;background:rgba(255,255,255,.28);color:#17211c;font:inherit;font-size:22px;font-weight:650;letter-spacing:.08em;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,.85),0 12px 28px rgba(20,45,32,.14);backdrop-filter:blur(24px) saturate(170%);-webkit-backdrop-filter:blur(24px) saturate(170%)}
+.status-liquid-btn:active{transform:scale(.985)}
+.status-modal{position:fixed;inset:0;z-index:180;display:none;align-items:center;justify-content:center;padding:18px;background:rgba(8,10,12,.28);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+.status-modal.show{display:flex}
+.status-window{width:min(920px,100%);height:min(760px,88dvh);display:flex;flex-direction:column;overflow:hidden;border:1px solid rgba(255,255,255,.7);border-radius:28px;background:rgba(255,255,255,.62);box-shadow:0 24px 70px rgba(0,0,0,.22)}
+.status-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px}
+.status-window iframe{flex:1;width:100%;border:0;background:#fff}
 @keyframes flowDrift{0%,100%{background-position:0% 20%}50%{background-position:100% 80%}}
 </style>
 </head>
@@ -997,23 +1005,7 @@ body:before,body:after{display:none!important;content:none!important}
 
     <!-- ========== 案例 ========== -->
     <section id="view-cases" class="view">
-      <div class="prompt-library-card">
-        <div class="prompt-library-head">
-          <div>
-            <span class="prompt-library-kicker">PROMPT LIBRARY · GPT IMAGE 2.5</span>
-            <h2>产品摄影提示词库</h2>
-            <p>直接浏览 GitHub 原文，选中你喜欢的完整提示词后复制到「图像创作」。</p>
-          </div>
-          <div class="prompt-library-actions">
-            <button class="chip-btn" id="btnOpenPromptSource" type="button">新窗口打开</button>
-            <button class="chip-btn" id="btnCopyPromptSource" type="button">复制地址</button>
-          </div>
-        </div>
-        <div class="prompt-library-frame-wrap">
-          <iframe id="promptLibraryFrame" title="GPT Image 2.5 产品摄影提示词库" src="https://github.com/youart-open-source/awesome-gpt-image-2-5-prompts/blob/main/prompts/gpt-image-2-5-product-photo-prompts.md#p-product-marketing-minimalist-fashion-e-commerce-grid" loading="lazy"></iframe>
-          <div class="prompt-library-fallback">如果预览区域被 GitHub 安全策略拦截，请点击「新窗口打开」。</div>
-        </div>
-      </div>
+      <button class="status-liquid-btn" id="btnOpenStatus" type="button">模型状态</button>
       <p class="muted small" style="margin:0 0 16px;letter-spacing:.02em;">点击「套用」一键填入提示词与参数</p>
       <div id="caseList"></div>
     </section>
@@ -1134,6 +1126,14 @@ body:before,body:after{display:none!important;content:none!important}
       <button class="v-action-btn" id="viewerDownloadBtn">下载</button>
       <button class="v-icon-btn" id="viewerClose" type="button" aria-label="关闭">✕</button>
     </div>
+  </div>
+</div>
+
+
+<div class="status-modal" id="statusModal">
+  <div class="status-window">
+    <div class="status-head"><strong>模型状态</strong><button class="v-icon-btn" id="statusClose" type="button" aria-label="关闭">✕</button></div>
+    <iframe id="statusFrame" title="模型状态" loading="lazy"></iframe>
   </div>
 </div>
 
@@ -2557,13 +2557,6 @@ $('#caseList').addEventListener('click', e => {
   fillForm({ prompt: c.prompt, ratio: c.ratio });
 });
 
-const PROMPT_LIBRARY_URL = 'https://github.com/youart-open-source/awesome-gpt-image-2-5-prompts/blob/main/prompts/gpt-image-2-5-product-photo-prompts.md#p-product-marketing-minimalist-fashion-e-commerce-grid';
-$('#btnOpenPromptSource').addEventListener('click', () => window.open(PROMPT_LIBRARY_URL, '_blank', 'noopener,noreferrer'));
-$('#btnCopyPromptSource').addEventListener('click', () => copyText(PROMPT_LIBRARY_URL));
-
-/* ============================================================
- * 设置
- * ============================================================ */
 function renderCfgStatus() {
   const el = $('#cfgStatus');
   if (cfg.baseUrl && cfg.models.length) {
@@ -2744,6 +2737,16 @@ document.addEventListener('keydown', e => {
   }
   if (e.key === 'Escape' && $('#modelModal').classList.contains('show')) $('#modelModalClose').click();
 });
+
+
+const STATUS_URL = 'https://magenta-stardust-857688.netlify.app/';
+$('#btnOpenStatus').addEventListener('click', () => {
+  const frame = $('#statusFrame');
+  if (!frame.src) frame.src = STATUS_URL;
+  $('#statusModal').classList.add('show');
+});
+$('#statusClose').addEventListener('click', () => $('#statusModal').classList.remove('show'));
+$('#statusModal').addEventListener('click', e => { if (e.target.id === 'statusModal') $('#statusModal').classList.remove('show'); });
 
 init();
 
