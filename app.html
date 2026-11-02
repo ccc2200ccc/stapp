@@ -823,6 +823,13 @@ body:before,body:after{display:none!important;content:none!important}
 .float-beam .float-glyph{font-size:16px;line-height:1}
 .ledger-float{top:62%}
 .status-head-actions{display:flex;gap:6px;flex-shrink:0}
+.credit-float{top:18%}
+.credit-float button{flex-direction:column!important;gap:1px!important;line-height:1.1}
+.credit-label{font-size:10px;font-weight:500;opacity:.72}
+.credit-value{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums;transition:color .35s ease}
+.credit-float.credit-off .credit-value{font-size:13px;font-weight:600}
+.credit-float.credit-up .credit-value{color:#0f7a3d}
+.credit-float.credit-down .credit-value{color:#a54139}
 @keyframes flowDrift{0%,100%{background-position:0% 20%}50%{background-position:100% 80%}}
 .status-tabs{display:flex;gap:4px;min-width:0;padding:4px;border-radius:16px;background:rgba(28,28,30,.1)}
 .status-tabs button{border:0;border-radius:12px;padding:10px 14px;background:transparent;color:#4c554f;font:inherit;font-size:13px;cursor:pointer;white-space:nowrap}
@@ -1165,6 +1172,12 @@ body:before,body:after{display:none!important;content:none!important}
 </div>
 <div class="float-beam ledger-float single" id="ledgerFloat" role="group" aria-label="API 账目与 Key，可拖动吸附屏幕边缘">
   <button type="button" data-ledger-open aria-label="查看 API 账目与 Key"><span class="float-glyph" aria-hidden="true">◧</span>账目</button>
+</div>
+<div class="float-beam credit-float single" id="creditFloat" role="group" aria-label="剩余积分，点按查看账目，可拖动吸附屏幕边缘">
+  <button type="button" data-credit-open aria-label="剩余积分，点按查看账目">
+    <span class="credit-label">积分</span>
+    <span class="credit-value" id="creditValue">—</span>
+  </button>
 </div>
 <div class="status-modal" id="statusModal">
   <div class="status-window">
@@ -1843,6 +1856,8 @@ async function runJob(job, isResume) {
     savePending();
     finishProgress(true);
     toast(isResume ? '后台生成已完成' : '生成成功');
+    refreshCredits();
+    setTimeout(() => refreshCredits(), 6000);
   } catch (err) {
     console.error(err);
     const message = String((err && err.message) || '');
@@ -3008,8 +3023,94 @@ function openLedgerInTab() {
   if (!opened) { toast('浏览器拦截了新窗口，请允许弹出窗口'); return; }
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
-function closeLedger() { $('#ledgerModal').classList.remove('show'); }
+function closeLedger() {
+  $('#ledgerModal').classList.remove('show');
+  refreshCredits();
+}
 
+const CREDIT_TOKEN_KEY = 'ledgerOverviewToken';
+const CREDIT_ENDPOINT = 'https://api.image2pro.top/api-console/bootstrap';
+let creditValue = null, creditAnim = 0, creditBusy = false, creditTimer = 0;
+
+function readLedgerToken() {
+  try { return localStorage.getItem(CREDIT_TOKEN_KEY) || ''; } catch { return ''; }
+}
+function paintCredits(value, fallback) {
+  const valueEl = $('#creditValue'), box = $('#creditFloat');
+  if (!valueEl) return;
+  valueEl.textContent = value == null ? (fallback || '—') : value.toLocaleString('zh-CN');
+  if (box) box.classList.toggle('credit-off', value == null);
+}
+function animateCredits(target) {
+  const box = $('#creditFloat');
+  cancelAnimationFrame(creditAnim);
+  const from = creditValue == null ? target : creditValue;
+  if (from === target) { paintCredits(target); return; }
+  const started = performance.now();
+  const span = Math.min(900, 320 + Math.min(560, Math.abs(target - from) * 6));
+  if (box) {
+    box.classList.remove('credit-up', 'credit-down');
+    box.classList.add(target > from ? 'credit-up' : 'credit-down');
+  }
+  const step = now => {
+    const k = Math.min(1, (now - started) / span);
+    const eased = 1 - Math.pow(1 - k, 3);
+    paintCredits(Math.round(from + (target - from) * eased));
+    if (k < 1) { creditAnim = requestAnimationFrame(step); return; }
+    paintCredits(target);
+    if (box) setTimeout(() => box.classList.remove('credit-up', 'credit-down'), 900);
+  };
+  creditAnim = requestAnimationFrame(step);
+}
+async function refreshCredits() {
+  if (creditBusy) return;
+  const token = readLedgerToken();
+  if (!token) {
+    creditValue = null;
+    paintCredits(null, '登录');
+    return;
+  }
+  creditBusy = true;
+  try {
+    const res = await fetch(CREDIT_ENDPOINT, {
+      method: 'POST',
+      credentials: 'omit',
+      cache: 'no-store',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token })
+    });
+    const data = await res.json().catch(() => ({}));
+    const rejected = res.status === 401 || data.needLogin === true || data.ok === false;
+    const balance = data.account && Number(data.account.balance);
+    if (rejected || !Number.isFinite(balance)) {
+      creditValue = null;
+      paintCredits(null, '登录');
+      return;
+    }
+    const next = Math.floor(Math.max(0, balance) + 1e-9);
+    animateCredits(next);
+    creditValue = next;
+  } catch {
+    if (creditValue == null) paintCredits(null, '—');
+  } finally {
+    creditBusy = false;
+  }
+}
+function startCreditWatch() {
+  clearInterval(creditTimer);
+  creditTimer = setInterval(() => { if (!document.hidden) refreshCredits(); }, 30000);
+  refreshCredits();
+}
+
+setupFloat($('#creditFloat'), 'ia_credit_float_position_v1', .18, event => {
+  if (!event.target.closest('[data-credit-open]')) return;
+  openLedger();
+});
+
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshCredits(); });
+window.addEventListener('online', () => refreshCredits());
+window.addEventListener('pageshow', () => refreshCredits());
+startCreditWatch();
 setupFloat($('#statusFloat'), 'ia_status_float_position_v1', .4, event => {
   const button = event.target.closest('[data-float-tab]');
   if (!button) return;
