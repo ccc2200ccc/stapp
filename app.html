@@ -821,9 +821,16 @@ body:before,body:after{display:none!important;content:none!important}
 .status-window iframe{flex:1;width:100%;border:0;background:#fff}
 .float-beam.single button{padding:0!important}
 .float-beam .float-glyph{font-size:16px;line-height:1}
-.ledger-float{top:62%}
 .status-head-actions{display:flex;gap:6px;flex-shrink:0}
-.credit-float{top:18%}
+.credit-float{top:18%;overflow:visible}
+.credit-pop{position:absolute;left:50%;top:10px;z-index:5;transform:translateX(-50%);font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;pointer-events:none;text-shadow:0 1px 3px rgba(255,255,255,.75);animation:creditPop 1.15s cubic-bezier(.22,1,.36,1) forwards}
+.credit-pop.up{color:#0f7a3d}
+.credit-pop.down{color:#a54139}
+@keyframes creditPop{0%{opacity:0;transform:translate(-50%,2px) scale(.85)}22%{opacity:1;transform:translate(-50%,-12px) scale(1.04)}70%{opacity:1}100%{opacity:0;transform:translate(-50%,-34px) scale(.98)}}
+.credit-value.credit-bump{animation:creditBump .55s cubic-bezier(.22,1,.36,1)}
+@keyframes creditBump{0%{transform:scale(1)}32%{transform:scale(1.26)}64%{transform:scale(.94)}100%{transform:scale(1)}}
+@media(prefers-reduced-motion:reduce){.credit-pop{animation:none;opacity:0}.credit-value.credit-bump{animation:none}}
+
 .credit-float button{flex-direction:column!important;gap:1px!important;line-height:1.1}
 .credit-label{font-size:10px;font-weight:500;opacity:.72}
 .credit-value{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums;transition:color .35s ease}
@@ -1170,9 +1177,7 @@ body:before,body:after{display:none!important;content:none!important}
   <span class="float-beam-divider" aria-hidden="true"></span>
   <button type="button" data-float-tab="prices" aria-label="查看模型与价格"><span aria-hidden="true">¥</span>价格</button>
 </div>
-<div class="float-beam ledger-float single" id="ledgerFloat" role="group" aria-label="API 账目与 Key，可拖动吸附屏幕边缘">
-  <button type="button" data-ledger-open aria-label="查看 API 账目与 Key"><span class="float-glyph" aria-hidden="true">◧</span>账目</button>
-</div>
+
 <div class="float-beam credit-float single" id="creditFloat" role="group" aria-label="剩余积分，点按查看账目，可拖动吸附屏幕边缘">
   <button type="button" data-credit-open aria-label="剩余积分，点按查看账目">
     <span class="credit-label">积分</span>
@@ -3041,11 +3046,29 @@ function paintCredits(value, fallback) {
   valueEl.textContent = value == null ? (fallback || '—') : value.toLocaleString('zh-CN');
   if (box) box.classList.toggle('credit-off', value == null);
 }
+function popCreditDelta(delta) {
+  const box = $('#creditFloat');
+  if (!box || !delta) return;
+  const pop = document.createElement('span');
+  pop.className = 'credit-pop ' + (delta > 0 ? 'up' : 'down');
+  pop.textContent = (delta > 0 ? '+' : '\u2212') + Math.abs(delta).toLocaleString('zh-CN');
+  box.appendChild(pop);
+  setTimeout(() => pop.remove(), 1300);
+}
+function bumpCreditValue() {
+  const valueEl = $('#creditValue');
+  if (!valueEl) return;
+  valueEl.classList.remove('credit-bump');
+  void valueEl.offsetWidth;
+  valueEl.classList.add('credit-bump');
+  setTimeout(() => valueEl.classList.remove('credit-bump'), 620);
+}
 function animateCredits(target) {
   const box = $('#creditFloat');
   cancelAnimationFrame(creditAnim);
   const from = creditValue == null ? target : creditValue;
   if (from === target) { paintCredits(target); return; }
+  if (creditValue != null) { popCreditDelta(target - from); bumpCreditValue(); }
   const started = performance.now();
   const span = Math.min(900, 320 + Math.min(560, Math.abs(target - from) * 6));
   if (box) {
@@ -3118,10 +3141,6 @@ setupFloat($('#statusFloat'), 'ia_status_float_position_v1', .4, event => {
   $('#statusModal').classList.add('show');
 });
 
-setupFloat($('#ledgerFloat'), 'ia_ledger_float_position_v1', .62, event => {
-  if (!event.target.closest('[data-ledger-open]')) return;
-  openLedger();
-});
 
 $('#statusClose').addEventListener('click', () => $('#statusModal').classList.remove('show'));
 $('#statusModal').addEventListener('click', e => { if (e.target.id === 'statusModal') $('#statusModal').classList.remove('show'); });
