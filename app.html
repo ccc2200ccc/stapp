@@ -1240,7 +1240,7 @@ let currentRatio = '1:1';
 /* ============================================================
  * 本地数据
  * ============================================================ */
-const CFG_KEY = 'ia_cfg_v6', HIS_KEY = 'ia_history_v6', DRAFT_KEY = 'ia_draft_v6', VH_KEY = 'ia_vision_history_v6';
+const CFG_KEY = 'ia_cfg_v6', HIS_KEY = 'ia_history_v6', DRAFT_KEY = 'ia_draft_v6', VH_KEY = 'ia_vision_history_v6', PENDING_KEY = 'ia_pending_gen_v1';
 
 const DEFAULT_CFG = { provider: 'custom', baseUrl: '', apiKey: '', models: [], genModel: '', visionModel: '' };
 
@@ -1255,6 +1255,8 @@ let visionHistory = store.get(VH_KEY, []) || [];
 
 let refImage = null;
 let generating = false;
+let pendingGen = null;
+let bgInterrupted = false;
 let currentView = 'generate';
 
 function saveCfg() { store.set(CFG_KEY, cfg); }
@@ -1676,7 +1678,7 @@ function setGenProgress(p) {
   $('#genPercent').textContent = rounded + '%';
   $('#genStatus').textContent = progressMessage(progressVal);
   $('#btnGenerate').setAttribute('aria-valuenow', String(rounded));
-  if (progressVal <= 0) $('#genText').textContent = '开始生成';
+  if (progressVal <= 0) $('#genText').textContent = pendingGen ? '继续生成' : '开始生成';
 }
 
 let waveFrame = 0;
@@ -1747,30 +1749,64 @@ function finishProgress(ok) {
 }
 
 /* ---------- 生成 ---------- */
-$('#btnGenerate').addEventListener('click', doGenerate);
+function savePending() {
+  if (pendingGen) store.set(PENDING_KEY, pendingGen);
+  else store.del(PENDING_KEY);
+}
 
-async function doGenerate() {
-  if (generating) return;
+function loadPending() {
+  const saved = store.get(PENDING_KEY, null);
+  const fresh = saved && saved.prompt && saved.ts && Date.now() - saved.ts < 20 * 60 * 1000;
+  pendingGen = fresh ? saved : null;
+  if (saved && !fresh) store.del(PENDING_KEY);
+}
+
+function buildJob() {
   const prompt = $('#promptInput').value.trim();
-  if (!prompt) { toast('请先输入提示词'); $('#promptInput').focus(); return; }
-
+  if (!prompt) return null;
   const model = genModel();
   const ratio = currentRatio;
-  const size = (RATIOS[ratio] || RATIOS['1:1']).size;
-  const count = parseInt($('#countSelect').value, 10) || 1;
-  const useAPI = !!(cfg.baseUrl && model);
+  return {
+    id: uid(), ts: Date.now(), prompt, model, ratio,
+    size: (RATIOS[ratio] || RATIOS['1:1']).size,
+    count: parseInt($('#countSelect').value, 10) || 1,
+    attempts: 0
+  };
+}
 
+function markInterrupted(job) {
+  pendingGen = Object.assign({}, job, { attempts: (job.attempts || 0) + 1 });
+  savePending();
+  clearInterval(progressTimer);
+  stopWavePhysics();
+  const btn = $('#btnGenerate');
+  btn.classList.remove('loading', 'complete', 'error');
+  btn.disabled = false;
+  btn.removeAttribute('role');
+  btn.removeAttribute('aria-valuemin');
+  btn.removeAttribute('aria-valuemax');
+  btn.removeAttribute('aria-valuenow');
+  btn.setAttribute('aria-label', '继续生成');
+  progressVal = 0;
+  $('#genFill').style.width = '0%';
+  $('#genPercent').textContent = '0%';
+  $('#genStatus').textContent = '已中断，返回后继续';
+  $('#genText').textContent = '继续生成';
+  if (!document.hidden) setTimeout(() => { if (!document.hidden) resumePending(); }, 800);
+}
+
+async function runJob(job, isResume) {
   generating = true;
+  bgInterrupted = false;
   startProgress();
-
   try {
     let images = [];
-    if (useAPI) {
-      images = await callImageAPI({ model, prompt, size, count, ref: refImage });
+    if (cfg.baseUrl && job.model) {
+      images = await callImageAPI({ model: job.model, prompt: job.prompt, size: job.size, count: job.count, ref: refImage });
     } else {
       await sleep(280);
-      images = Array.from({ length: count }, (_, i) =>
-        makePlaceholder(prompt + (i ? ` #${i + 1}` : ''), ratio));
+      images = Array.from({ length: job.count }, (_, i) =>
+        makePlaceholder(job.prompt + (i ? ' #' + (i + 1) : ''), job.ratio));
       toast('未配置接口，使用演示占位图', 2400);
     }
     if (!images.length) throw new Error('接口未返回图片');
@@ -1779,8 +1815,8 @@ async function doGenerate() {
     for (const src of images) thumbs.push(await makeThumb(src));
 
     const item = {
-      id: uid(), ts: Date.now(), prompt,
-      ratio, resolution: '4K', size, model, count,
+      id: uid(), ts: Date.now(), prompt: job.prompt,
+      ratio: job.ratio, resolution: '4K', size: job.size, model: job.model, count: job.count,
       images, thumbs
     };
 
@@ -1789,16 +1825,62 @@ async function doGenerate() {
     renderHistory();
     renderGenResult();
 
+    pendingGen = null;
+    savePending();
     finishProgress(true);
-    toast('生成成功');
+    toast(isResume ? '后台生成已完成' : '生成成功');
   } catch (err) {
     console.error(err);
-    finishProgress(false);
-    toast('生成失败：' + err.message, 3600);
+    const message = String((err && err.message) || '');
+    const interrupted = bgInterrupted || document.hidden;
+    if (interrupted && (job.attempts || 0) < 2) {
+      markInterrupted(job);
+      toast(document.hidden ? '已切到后台，返回后自动继续' : '网络中断，返回应用后自动继续', 3200);
+    } else {
+      pendingGen = null;
+      savePending();
+      finishProgress(false);
+      toast('生成失败：' + message, 3600);
+    }
   } finally {
     generating = false;
   }
 }
+
+function resumePending() {
+  if (!pendingGen || generating || document.hidden) return;
+  const job = pendingGen;
+  toast('正在继续上一次生成…', 2000);
+  return runJob(job, true);
+}
+
+function startOrResume() {
+  if (generating) return;
+  if (pendingGen) { resumePending(); return; }
+  const job = buildJob();
+  if (!job) { toast('请先输入提示词'); $('#promptInput').focus(); return; }
+  pendingGen = job;
+  savePending();
+  runJob(job, false);
+}
+
+async function doGenerate() { startOrResume(); }
+
+$('#btnGenerate').addEventListener('click', doGenerate);
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    if (generating) bgInterrupted = true;
+    return;
+  }
+  if (pendingGen && !generating) setTimeout(resumePending, 500);
+});
+window.addEventListener('pageshow', () => {
+  if (pendingGen && !generating) setTimeout(resumePending, 600);
+});
+window.addEventListener('online', () => {
+  if (pendingGen && !generating) setTimeout(resumePending, 600);
+});
 
 /* ---------- 响应解析 ---------- */
 function pickPath(obj, path) {
@@ -2683,7 +2765,9 @@ $('#btnExport').addEventListener('click', () => {
 
 $('#btnReset').addEventListener('click', () => {
   if (!confirm('确定清除全部本地数据？')) return;
-  [CFG_KEY, HIS_KEY, DRAFT_KEY, VH_KEY].forEach(store.del);
+  [CFG_KEY, HIS_KEY, DRAFT_KEY, VH_KEY, PENDING_KEY].forEach(store.del);
+  pendingGen = null;
+  generating = false;
   cfg = Object.assign({}, DEFAULT_CFG, { models: [] });
   history = [];
   visionHistory = [];
@@ -2724,6 +2808,12 @@ function init() {
   const draft = store.get(DRAFT_KEY, '');
   if (draft) $('#promptInput').value = draft;
   updatePromptCount();
+
+  loadPending();
+  if (pendingGen) {
+    $('#genText').textContent = '继续生成';
+    $('#genStatus').textContent = '有未完成的生成，点按继续';
+  }
 
   switchView('generate');
 }
