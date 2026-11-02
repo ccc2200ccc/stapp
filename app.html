@@ -802,14 +802,18 @@ body:before,body:after{display:none!important;content:none!important}
   .viewer-card-actions .v-action-btn{min-width:54px!important;height:36px!important;padding:0 10px!important}
 }
 
-.status-float{position:fixed;z-index:60;right:8px;top:40%;width:78px;height:78px;border:1px solid rgba(255,255,255,.65);border-radius:50%;overflow:hidden;display:flex;flex-direction:column;background:rgba(255,255,255,.38);box-shadow:inset 0 1px 0 rgba(255,255,255,.85),0 8px 22px rgba(0,0,0,.16);backdrop-filter:blur(24px) saturate(170%);-webkit-backdrop-filter:blur(24px) saturate(170%);touch-action:none;user-select:none;transition:left .22s ease,top .22s ease}
+@property --beam-angle{syntax:'<angle>';inherits:false;initial-value:0deg}
+.status-float{--beam-angle:0deg;position:fixed;z-index:60;right:8px;top:40%;width:78px;height:78px;display:flex;flex-direction:column;border-radius:50%;isolation:isolate;background:rgba(255,255,255,.3);box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.85);backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%);touch-action:none;user-select:none;transition:left .22s ease,top .22s ease}
+.status-float::before{content:'';position:absolute;inset:0;z-index:2;border-radius:50%;padding:1.5px;background:conic-gradient(from var(--beam-angle),transparent 0deg,transparent 276deg,#22d3ee 300deg,#e879f9 338deg,transparent 360deg);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude;animation:statusBeam 3s linear infinite;pointer-events:none}
+@keyframes statusBeam{from{--beam-angle:0deg}to{--beam-angle:360deg}}
 .status-float.dragging{transition:none;cursor:grabbing}
-.status-float button{flex:1;min-height:0;width:100%;display:flex;align-items:center;justify-content:center;gap:5px;padding:0;border:0;background:transparent;color:#263c32;font:inherit;font-size:12px;font-weight:600;cursor:grab;touch-action:none}
+.status-float button{position:relative;z-index:3;flex:1;min-height:0;width:100%;display:flex;align-items:center;justify-content:center;gap:5px;padding:0;border:0;background:transparent;color:#17211c;font:inherit;font-size:12px;font-weight:600;cursor:grab;touch-action:none;text-shadow:0 1px 0 rgba(255,255,255,.35)}
 .status-float button:first-child{padding-top:7px}
 .status-float button:last-child{padding-bottom:7px}
 .status-float button:focus-visible{outline:2px solid #305d48;outline-offset:-4px}
-.status-float-divider{height:1px;flex:0 0 1px;margin:0 12px;background:#fff;pointer-events:none}
-.status-float-dot{width:7px;height:7px;border-radius:50%;background:#34c759;box-shadow:0 0 5px #34c75966}
+.status-float-divider{position:relative;z-index:3;height:1px;flex:0 0 1px;margin:0 12px;background:#fff;box-shadow:0 1px 0 rgba(0,0,0,.12);pointer-events:none}
+.status-float-dot{position:relative;z-index:3;width:7px;height:7px;flex:0 0 7px;border-radius:50%;background:#34c759;box-shadow:0 0 0 1px rgba(255,255,255,.55)}
+@media(prefers-reduced-motion:reduce){.status-float::before{animation:none;--beam-angle:318deg}}
 .status-modal{position:fixed;inset:0;z-index:180;display:none;align-items:center;justify-content:center;padding:18px;background:rgba(8,10,12,.28);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
 .status-modal.show{display:flex}
 .status-window{width:min(920px,100%);height:min(760px,88dvh);display:flex;flex-direction:column;overflow:hidden;border:1px solid rgba(255,255,255,.7);border-radius:28px;background:rgba(255,255,255,.62);box-shadow:0 24px 70px rgba(0,0,0,.22)}
@@ -823,6 +827,14 @@ body:before,body:after{display:none!important;content:none!important}
 .status-head #statusClose{flex-shrink:0;background:rgba(28,28,30,.12);color:#17211c}
 .status-window iframe{min-height:0}
 @media(max-width:420px){.status-modal{padding:8px}.status-head{padding:10px}.status-tabs button{padding:9px 10px;font-size:12px}.status-window{height:92dvh}}
+
+/* Segmented control (iOS style): one pill track, white text when idle, white thumb when active. */
+.gen-card .ratio-group,.count-group{display:flex!important;align-items:stretch!important;gap:2px!important;padding:3px!important;border-radius:999px!important;background:rgba(28,28,30,.62)!important;box-shadow:inset 0 0 0 1px rgba(255,255,255,.24),inset 0 1px 4px rgba(0,0,0,.22)!important;min-width:0}
+.gen-card .ratio-btn,.count-btn{flex:1 1 0!important;min-width:0!important;height:32px!important;padding:0 6px!important;border:0!important;border-radius:999px!important;background:transparent!important;color:#fff!important;font-size:12px!important;font-weight:500!important;letter-spacing:0!important;box-shadow:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;transition:background .18s ease,color .18s ease,box-shadow .18s ease!important}
+.gen-card .ratio-btn .shape{border-color:currentColor!important;transform:scale(.86)!important}
+.gen-card .ratio-btn.active,.count-btn.active{background:#fff!important;color:#111!important;font-weight:600!important;box-shadow:0 1px 3px rgba(0,0,0,.28)!important}
+.gen-card .ratio-btn:hover:not(.active),.count-btn:hover:not(.active){background:rgba(255,255,255,.16)!important}
+.count-item{background:transparent!important;border:0!important;padding:0!important}
 </style>
 </head>
 <body>
