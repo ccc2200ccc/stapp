@@ -789,9 +789,9 @@ body:before,body:after{display:none!important;content:none!important}
   #view-generate.active .canvas-stage{min-height:210px!important;height:34dvh!important}
   #view-generate.active .gen-card{order:2!important;width:100%!important;padding:12px!important;gap:8px!important}
   #view-generate.active .gen-textarea{min-height:78px!important;height:78px!important}
-  #view-generate.active .ratio-block{grid-template-columns:84px minmax(0,1fr)!important}
+  #view-generate.active .ratio-block{grid-template-columns:62px minmax(0,1fr)!important}
   #view-generate.active .ratio-group{grid-column:2!important;width:auto!important}
-  #view-generate.active .count-item{grid-template-columns:84px minmax(0,1fr)!important;width:100%!important}
+  #view-generate.active .count-item{grid-template-columns:62px minmax(0,1fr)!important;width:100%!important}
   .viewer-stage{padding:12px 8px 168px!important}
   .viewer-card{left:8px!important;right:8px!important;padding:12px!important}
   .viewer-card-prompt{max-height:58px!important;margin-bottom:8px!important}
@@ -873,25 +873,107 @@ body:before,body:after{display:none!important;content:none!important}
 
 
 /* 画面比例 / 数量：图标 + 竖线 + 文字，右侧浅白跑道，选中为浅绿渐变胶囊（跟随滑动） */
-.gen-card .ratio-block{display:grid!important;grid-template-columns:84px minmax(0,1fr)!important;align-items:center!important;gap:10px!important}
+.gen-card .ratio-block{display:grid!important;grid-template-columns:62px minmax(0,1fr)!important;align-items:center!important;gap:10px!important}
 .gen-card .ratio-block>.block-head{display:block!important;min-width:0!important}
 .gen-card .ratio-group{grid-column:2!important;min-width:0!important}
 .gen-card .meta-row{display:block!important;height:auto!important;margin-top:8px!important;gap:0!important}
-.gen-card .count-item{display:grid!important;grid-template-columns:84px minmax(0,1fr)!important;align-items:center!important;gap:10px!important;height:auto!important;padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important}
+.gen-card .count-item{display:grid!important;grid-template-columns:62px minmax(0,1fr)!important;align-items:center!important;gap:10px!important;height:auto!important;padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important}
 .gen-card .count-item .mini-label{display:none!important}
-.setting-label{display:flex!important;align-items:center!important;gap:7px!important;min-width:0!important;font-size:12px!important;font-weight:600!important;color:#4d5f55!important;white-space:nowrap!important;letter-spacing:.2px!important;line-height:1.2!important}
+.setting-label{display:flex!important;align-items:center!important;gap:6px!important;min-width:0!important;font-size:12px!important;font-weight:600!important;color:#4d5f55!important;white-space:nowrap!important;letter-spacing:.1px!important;line-height:1.2!important}
 .setting-icon{flex:0 0 auto!important;width:17px!important;height:17px!important;color:#5f7a6b!important;opacity:.9}
 .setting-divider{flex:0 0 auto!important;width:1px!important;height:14px!important;background:rgba(60,60,67,.18)!important;border-radius:1px}
 .gen-card .seg-group{position:relative!important;display:flex!important;align-items:stretch!important;gap:0!important;padding:3px!important;border-radius:999px!important;background:#fff!important;box-shadow:inset 0 0 0 1px rgba(60,60,67,.10)!important;min-width:0!important;overflow:hidden!important}
 .seg-thumb{position:absolute!important;top:3px!important;bottom:3px!important;left:3px!important;width:calc((100% - 6px)/4)!important;border-radius:999px!important;pointer-events:none!important;z-index:0!important;background:linear-gradient(180deg,rgba(226,244,232,.98) 0%,rgba(211,236,219,.96) 100%)!important;box-shadow:inset 0 0 0 1.5px rgba(102,176,132,.55),0 2px 7px rgba(80,150,110,.18)!important;transform:translateX(0%);transition:transform .34s cubic-bezier(.32,1.12,.36,1)!important}
-.gen-card .ratio-btn,.count-btn{position:relative!important;z-index:1!important;flex:1 1 0!important;min-width:0!important;height:36px!important;padding:0 4px!important;border:0!important;border-radius:999px!important;background:transparent!important;color:#5d7065!important;font-size:12.5px!important;font-weight:600!important;letter-spacing:0!important;box-shadow:none!important;display:flex!important;align-items:center!important;justify-content:center!important;gap:6px!important;transition:color .22s ease!important}
+.gen-card .ratio-btn,.count-btn{position:relative!important;z-index:1!important;flex:1 1 0!important;min-width:0!important;height:38px!important;padding:0 2px!important;border:0!important;border-radius:999px!important;background:transparent!important;color:#5d7065!important;font-size:12px!important;font-weight:600!important;letter-spacing:0!important;box-shadow:none!important;display:flex!important;align-items:center!important;justify-content:center!important;gap:5px!important;white-space:nowrap!important;transition:color .22s ease!important}
 .gen-card .ratio-btn+.ratio-btn::before,.count-btn+.count-btn::before{content:""!important;position:absolute!important;left:0!important;top:50%!important;transform:translateY(-50%)!important;width:1px!important;height:16px!important;background:rgba(60,60,67,.13)!important}
 .gen-card .ratio-btn.active::before,.count-btn.active::before,.gen-card .ratio-btn.active+.ratio-btn::before,.count-btn.active+.count-btn::before{opacity:0!important}
-.gen-card .ratio-btn .shape{border-color:currentColor!important;transform:scale(.9)!important;opacity:.85}
+.gen-card .ratio-btn .shape{flex:0 0 auto!important;border-color:currentColor!important;transform:scale(.82)!important;opacity:.85}
 .gen-card .ratio-btn.active,.count-btn.active{background:transparent!important;color:#1f4d38!important;font-weight:700!important;box-shadow:none!important}
 .gen-card .ratio-btn:hover:not(.active),.count-btn:hover:not(.active){background:rgba(90,150,115,.08)!important}
 #bottomNav .nav-slider{position:absolute;top:6px;bottom:6px;left:7px;width:calc((100% - 14px)/5);z-index:0;pointer-events:none;border-radius:24px;border:1px solid rgba(255,255,255,.28);background:linear-gradient(165deg,rgba(255,255,255,.22),rgba(255,255,255,.08) 52%,rgba(255,255,255,.14));box-shadow:inset 0 1px 0 rgba(255,255,255,.35),inset 0 -8px 12px rgba(0,0,0,.18),0 8px 16px rgba(0,0,0,.16);backdrop-filter:blur(14px) saturate(140%);-webkit-backdrop-filter:blur(14px) saturate(140%);transform:translateX(0%);transition:transform .34s cubic-bezier(.32,1.12,.36,1)}
 #bottomNav.nav-ready .nav-btn.active{background:transparent!important;border-color:transparent!important;box-shadow:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+
+/* ================= 设置页：API 配置新版 ================= */
+#view-settings.active{max-width:560px!important;margin:0 auto!important;width:100%!important;box-sizing:border-box!important;padding:0 4px 14px!important;display:flex!important;flex-direction:column!important;gap:10px!important;overflow-x:hidden!important}
+#view-settings *{box-sizing:border-box!important;min-width:0}
+#view-settings .set-model-sub{white-space:nowrap!important}
+.set-head{display:flex!important;align-items:center!important;gap:10px!important;padding:2px 2px 6px!important}
+.set-head h2{margin:0!important;flex:1 1 auto!important;text-align:center!important;font-size:19px!important;font-weight:700!important;letter-spacing:.5px!important;color:#22312a!important}
+.set-card{position:relative!important;background:#fff!important;border:1px solid rgba(60,60,67,.07)!important;border-radius:20px!important;padding:16px!important;box-shadow:0 8px 30px -14px rgba(35,60,52,.16)!important}
+.set-brand{display:flex!important;align-items:center!important;gap:12px!important;margin-bottom:14px!important}
+.set-logo{flex:0 0 auto!important;width:46px!important;height:46px!important;display:grid!important;place-items:center!important}
+.set-logo svg{width:100%!important;height:100%!important}
+.set-brand-text{min-width:0!important}
+.set-brand-text h3{margin:0 0 3px!important;font-size:17px!important;font-weight:700!important;color:#1f2e27!important;line-height:1.25!important}
+.set-brand-text p{margin:0!important;font-size:11.5px!important;line-height:1.4!important;color:#8b968e!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}
+.set-label{display:block!important;margin:0 0 7px!important;font-size:12.5px!important;font-weight:600!important;color:#28372f!important}
+.set-field{margin-bottom:12px!important}
+.set-field:last-of-type{margin-bottom:6px!important}
+.set-seg{position:relative!important;display:flex!important;gap:0!important;padding:3px!important;border-radius:999px!important;background:#f3f5f2!important}
+.set-seg-thumb{position:absolute!important;top:3px!important;bottom:3px!important;left:3px!important;width:calc((100% - 6px)/2)!important;border-radius:999px!important;background:#fff!important;box-shadow:0 2px 8px rgba(35,60,52,.10)!important;pointer-events:none!important;transition:transform .3s cubic-bezier(.32,1.12,.36,1)!important}
+.set-seg-btn{position:relative!important;z-index:1!important;flex:1 1 0!important;min-width:0!important;height:38px!important;padding:0 6px!important;border:0!important;background:transparent!important;border-radius:999px!important;font-size:12.5px!important;font-weight:600!important;color:#8b968e!important;cursor:pointer!important;transition:color .22s ease!important}
+.set-seg-btn.active{color:#2f6b4f!important}
+.set-input-wrap{position:relative!important;display:flex!important;align-items:center!important}
+.set-input-wrap .set-lead{position:absolute!important;left:13px!important;width:17px!important;height:17px!important;color:#a9b3ac!important;pointer-events:none!important}
+.set-input{width:100%!important;height:44px!important;box-sizing:border-box!important;padding:0 14px 0 40px!important;border:1px solid rgba(60,60,67,.09)!important;border-radius:14px!important;background:#f6f7f5!important;font-size:13.5px!important;color:#22312a!important;outline:none!important;transition:border-color .18s ease,background .18s ease!important}
+.set-input::placeholder{color:#b3bcb6!important}
+.set-input:focus{border-color:rgba(76,156,116,.5)!important;background:#fff!important}
+.set-input[type=password]{letter-spacing:2px!important}
+.set-key-btn{position:absolute!important;right:8px!important;width:30px!important;height:30px!important;display:grid!important;place-items:center!important;padding:0!important;border:0!important;background:transparent!important;color:#a9b3ac!important;cursor:pointer!important}
+.set-key-btn svg{width:19px!important;height:19px!important}
+.set-tip{display:flex!important;align-items:center!important;gap:6px!important;margin:8px 0 0!important;font-size:11.5px!important;line-height:1.5!important;color:#8b968e!important}
+.set-tip svg{flex:0 0 auto!important;width:15px!important;height:15px!important;color:#4c9c74!important}
+.set-tip.warn svg{color:#d08a3c!important}
+
+.set-primary{width:100%!important;height:48px!important;margin-top:12px!important;border:0!important;border-radius:999px!important;background:linear-gradient(180deg,#5aa87d 0%,#4a9a6c 100%)!important;color:#fff!important;font-size:15px!important;font-weight:700!important;letter-spacing:.5px!important;cursor:pointer!important;box-shadow:0 10px 24px -12px rgba(58,124,90,.75)!important;transition:transform .16s ease,box-shadow .16s ease,filter .16s ease!important;display:flex!important;align-items:center!important;justify-content:center!important;gap:8px!important}
+.set-primary:hover:not(:disabled){filter:brightness(1.04)!important;box-shadow:0 14px 28px -12px rgba(58,124,90,.85)!important}
+.set-primary:active:not(:disabled){transform:translateY(1px) scale(.995)!important}
+.set-primary:disabled{opacity:.72!important;cursor:default!important}
+.set-arrow{width:18px!important;height:18px!important}
+.set-model-card{display:flex!important;align-items:center!important;gap:12px!important}
+.set-check{flex:0 0 auto!important;width:38px!important;height:38px!important;border-radius:50%!important;display:grid!important;place-items:center!important;background:#eaf6ee!important;color:#4c9c74!important}
+.set-check svg{width:22px!important;height:22px!important}
+.set-check.pending{background:#f6f1e8!important;color:#c98a3f!important}
+.set-model-body{flex:1 1 auto!important;min-width:0!important}
+.set-model-title{display:flex!important;align-items:center!important;gap:7px!important;font-size:14.5px!important;font-weight:700!important;color:#1f2e27!important}
+.set-badge{display:inline-block!important;padding:1px 8px!important;border-radius:999px!important;background:#eaf6ee!important;color:#3f8b63!important;font-size:12.5px!important;font-weight:700!important;font-variant-numeric:tabular-nums!important}
+.set-model-sub{margin:4px 0 0!important;font-size:11.5px!important;line-height:1.5!important;color:#8b968e!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}
+.set-refresh{flex:0 0 auto!important;display:inline-flex!important;align-items:center!important;gap:6px!important;height:36px!important;padding:0 14px!important;border:1px solid rgba(60,60,67,.10)!important;border-radius:999px!important;background:#fff!important;color:#3f8b63!important;font-size:13.5px!important;font-weight:600!important;cursor:pointer!important;transition:background .16s ease,border-color .16s ease!important}
+.set-refresh:hover:not(:disabled){background:#f6faf7!important;border-color:rgba(76,156,116,.4)!important}
+.set-refresh:disabled{opacity:.6!important;cursor:default!important}
+.set-refresh svg{width:16px!important;height:16px!important}
+.set-refresh.spinning svg{animation:setSpin .9s linear infinite}
+@keyframes setSpin{to{transform:rotate(360deg)}}
+.set-divider{position:relative!important;margin:6px 0 2px!important;text-align:center!important}
+.set-divider:before{content:''!important;position:absolute!important;left:0!important;right:0!important;top:50%!important;height:1px!important;background:rgba(60,60,67,.09)!important}
+.set-divider span{position:relative!important;z-index:1!important;padding:0 16px!important;background:#f7f8f5!important;font-size:15px!important;font-weight:700!important;color:#2b3a32!important;letter-spacing:.5px!important}
+.set-row-btn{display:flex!important;align-items:center!important;justify-content:center!important;gap:8px!important;width:100%!important;height:48px!important;border:0!important;border-radius:999px!important;background:#fff!important;color:#28372f!important;font-size:14px!important;font-weight:600!important;cursor:pointer!important;transition:background .16s ease!important}
+.set-row-btn:hover{background:rgba(60,60,67,.04)!important}
+.set-row-btn svg{width:18px!important;height:18px!important;color:#7c8880!important}
+.set-row-btn .set-chev{width:16px!important;height:16px!important;color:#c3cbc6!important}
+.set-danger{display:flex!important;align-items:center!important;justify-content:center!important;gap:8px!important;width:100%!important;height:48px!important;margin-top:0!important;border:1px solid rgba(214,84,84,.35)!important;border-radius:999px!important;background:#fff!important;color:#d64545!important;font-size:15px!important;font-weight:600!important;cursor:pointer!important;transition:background .16s ease,border-color .16s ease!important}
+.set-danger:hover{background:#fdf5f5!important;border-color:rgba(214,84,84,.55)!important}
+.set-danger svg{width:18px!important;height:18px!important}
+.set-foot{margin:0!important;text-align:center!important;font-size:11px!important;color:#a0aa98!important}
+#view-settings .section-head{display:none!important}
+/* 设置页内容较宽，悬浮圆钮收起，避免压住表单 */
+body.setting-open #statusFloat,
+body.setting-open #creditFloat{opacity:0!important;transform:scale(.86)!important;pointer-events:none!important;transition:opacity .2s ease,transform .2s ease!important}
+#view-settings .api-hint{display:none!important}
+#view-settings .type-pill{display:none!important}
+@media(max-width:420px){
+  #view-settings.active{gap:8px!important;padding:0 2px 12px!important}
+  .set-card{padding:16px!important;border-radius:20px!important}
+  .set-brand{gap:11px!important;margin-bottom:16px!important}
+  .set-logo{width:48px!important;height:48px!important}
+  .set-brand-text h3{font-size:17.5px!important}
+  .set-brand-text p{font-size:11.5px!important}
+  .set-input{height:48px!important;font-size:13.5px!important}
+  .set-primary{height:52px!important;font-size:15px!important}
+  .set-refresh{height:38px!important;padding:0 13px!important;font-size:12.5px!important}
+  .set-model-title{font-size:15px!important}
+  .set-row-btn,.set-danger{height:50px!important;font-size:14px!important}
+}
 </style>
 </head>
 <body>
@@ -962,7 +1044,7 @@ body:before,body:after{display:none!important;content:none!important}
             <span class="setting-label">
               <svg class="setting-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18M7.5 14h2M11 14h2M14.5 14h2M7.5 17.5h2M11 17.5h2"/></svg>
               <i class="setting-divider" aria-hidden="true"></i>
-              <span>画面比例</span>
+              <span>比例</span>
             </span>
           </div>
           <div class="ratio-group seg-group" id="ratioGroup">
@@ -1098,52 +1180,96 @@ body:before,body:after{display:none!important;content:none!important}
     <!-- ========== 设置 ========== -->
     <section id="view-settings" class="view">
 
-      <div class="card">
-        <div class="section-head" style="margin-bottom:18px">
-          <h2>API 配置</h2>
-          <span class="type-pill">OpenAI 兼容</span>
+
+      <div class="set-card">
+        <div class="set-brand">
+          <span class="set-logo" aria-hidden="true">
+            <svg viewBox="0 0 48 48" fill="none" stroke="#2f9e6a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M24 13.5c3.6 0 6.5 1.1 8.6 3.3 2.1 2.2 3.2 5 3.2 8.4M24 13.5c-3.6 0-6.5 1.1-8.6 3.3C13.3 19 12.2 21.8 12.2 25.2"/>
+              <path d="M35.8 25.2c0 3.4-1.1 6.2-3.2 8.4-2.1 2.2-5 3.4-8.6 3.4s-6.5-1.2-8.6-3.4c-2.1-2.2-3.2-5-3.2-8.4"/>
+              <path d="M17.7 34.5c-1.9-1.3-3.2-3.2-3.5-5.5M30.3 16.5c1.9 1.3 3.2 3.2 3.5 5.5"/>
+              <path d="M24 13.5c2.6 0 4.7 1 6.3 3M24 37c-2.6 0-4.7-1-6.3-3"/>
+            </svg>
+          </span>
+          <div class="set-brand-text">
+            <h3>接入 OpenAI</h3>
+            <p>配置您的 API 密钥，开始使用更强大的 AI 能力</p>
+          </div>
         </div>
 
-        <label class="field-label" style="margin-top:0">接口类型</label>
-        <select id="cfgProvider" class="select">
-          <option value="custom">自定义 OpenAI 兼容接口</option>
-          <option value="deepseek">DeepSeek</option>
-        </select>
-
-        <label class="field-label" style="margin-top:0">接口地址</label>
-        <input id="cfgBaseUrl" class="input" placeholder="https://api.example.com/v1" autocomplete="off">
-
-        <label class="field-label">API Key</label>
-        <div class="input-with-btn">
-          <input id="cfgApiKey" class="input" type="password" placeholder="sk-..." autocomplete="off">
-          <button class="eye-btn" id="btnToggleKey">显示</button>
+        <div class="set-field">
+          <div class="set-seg" id="setProviderSeg" role="radiogroup" aria-label="接口类型">
+            <span class="set-seg-thumb" aria-hidden="true"></span>
+            <button class="set-seg-btn active" type="button" data-provider="custom" aria-pressed="true">自定义接口</button>
+            <button class="set-seg-btn" type="button" data-provider="deepseek" aria-pressed="false">官方接口</button>
+          </div>
+          <select id="cfgProvider" class="select" hidden>
+            <option value="custom">自定义接口</option>
+            <option value="deepseek">DeepSeek</option>
+          </select>
         </div>
 
-        <p class="hint-text" id="providerHint">填写地址与 Key 后保存，自动从 /models 拉取模型。</p>
+        <div class="set-field">
+          <label class="set-label" for="cfgBaseUrl">接口地址</label>
+          <div class="set-input-wrap">
+            <svg class="set-lead" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
+            <input id="cfgBaseUrl" class="set-input" placeholder="https://api.example.com/v1" autocomplete="off">
+          </div>
+        </div>
 
-        <button class="primary-btn" id="btnSaveCfg" style="margin-top:20px">
-          <span class="btn-text">保存并获取模型</span>
+        <div class="set-field">
+          <label class="set-label" for="cfgApiKey">API Key</label>
+          <div class="set-input-wrap">
+            <svg class="set-lead" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="10.5" width="16" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/><circle cx="12" cy="15.5" r="1.2"/></svg>
+            <input id="cfgApiKey" class="set-input" type="password" placeholder="sk-..." autocomplete="off">
+            <button class="set-key-btn" id="btnToggleKey" type="button" aria-label="显示密钥">
+              <svg id="eyeOpen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+              <svg id="eyeOff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M4 4l16 16"/><path d="M9.9 5.9A9.4 9.4 0 0 1 12 5.7c6 0 9.5 6.3 9.5 6.3a17 17 0 0 1-3.1 3.8"/><path d="M6.5 7.7A16.6 16.6 0 0 0 2.5 12S6 18.3 12 18.3c1.5 0 2.8-.4 4-1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
+            </button>
+          </div>
+          <p class="set-tip" id="providerHint">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v6c0 4.2-2.9 7.6-7 9-4.1-1.4-7-4.8-7-9V6l7-3Z"/><path d="m9.2 12 2 2 3.6-3.8"/></svg>
+            <span id="providerHintText">您的密钥将安全加密存储，仅用于 API 请求</span>
+          </p>
+        </div>
+
+        <button class="set-primary" id="btnSaveCfg" type="button">
+          <span class="btn-text">保存并连接模型</span>
+          <svg class="set-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
         </button>
-        <div class="api-hint" id="cfgStatus"></div>
+        <div class="api-hint" id="cfgStatus" hidden></div>
       </div>
 
-      <div class="card">
-        <div class="section-head" style="margin-bottom:12px">
-          <h2>已获取模型 <span class="count" id="modelCount">0</span></h2>
-          <button class="text-btn accent" id="btnRefreshModels">刷新</button>
+
+      <div class="set-card set-model-card">
+        <span class="set-check" id="setCheck" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
+        </span>
+        <div class="set-model-body">
+          <div class="set-model-title">
+            <span id="setModelTitle">已获取模型</span>
+            <span class="set-badge" id="modelCount">0</span>
+          </div>
+          <p class="set-model-sub" id="setModelSub">尚未配置接口地址</p>
         </div>
-        <p class="muted small" style="margin:0; line-height:1.65">
-          生图页选生图模型，提示词页选视觉模型。
-        </p>
+        <button class="set-refresh" id="btnRefreshModels" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14-4.5L4 9"/><path d="M4 4v5h5"/><path d="M4 13a8 8 0 0 0 14 4.5L20 15"/><path d="M20 20v-5h-5"/></svg>
+          <span>刷新</span>
+        </button>
       </div>
 
-      <div class="card">
-        <div class="section-head" style="margin-bottom:16px"><h2>数据</h2></div>
-        <button class="ghost-btn full" id="btnExport">导出历史（JSON）</button>
-        <button class="ghost-btn full danger" id="btnReset" style="margin-bottom:0">清除全部本地数据</button>
-      </div>
+      <button class="set-row-btn" id="btnExport" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="6" rx="7.5" ry="3"/><path d="M4.5 6v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3V6"/><path d="M4.5 12v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-6"/></svg>
+        <span>导出历史（JSON）</span>
+        <svg class="set-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+      </button>
 
-      <p class="muted small center">配置与作品仅保存在浏览器本地</p>
+      <button class="set-danger" id="btnReset" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7"/><path d="M6.5 7l.9 12.1A1.9 1.9 0 0 0 9.3 21h5.4a1.9 1.9 0 0 0 1.9-1.9L17.5 7"/><path d="M10.5 11v6M13.5 11v6"/></svg>
+        <span>清除全部本地数据</span>
+      </button>
+
+      <p class="set-foot">配置与作品仅保存在浏览器本地</p>
     </section>
 
   </main>
@@ -1460,6 +1586,7 @@ function switchView(name) {
   const scroller = $('#view-' + name);
   if (scroller) scroller.scrollTop = 0;
   refreshSliders();
+  document.body.classList.toggle('setting-open', name === 'settings');
   if (name === 'settings') renderCfgStatus();
   if (name === 'prompts') updateVisionHint();
 }
@@ -2887,14 +3014,27 @@ $('#caseList').addEventListener('click', e => {
 
 function renderCfgStatus() {
   const el = $('#cfgStatus');
-  if (cfg.baseUrl && cfg.models.length) {
-    el.innerHTML = `已连接 ${escapeHtml(cfg.baseUrl)}，可用模型 ${cfg.models.length} 个`;
+  const n = cfg.models.length;
+  const ok = !!(cfg.baseUrl && n);
+  if (ok) {
+    el.innerHTML = `已连接 ${escapeHtml(cfg.baseUrl)}，可用模型 ${n} 个`;
   } else if (cfg.baseUrl) {
     el.innerHTML = `已填写地址，尚未获取到模型，请重试`;
   } else {
     el.innerHTML = `尚未配置接口地址`;
   }
-  $('#modelCount').textContent = cfg.models.length;
+  const title = $('#setModelTitle');
+  const sub = $('#setModelSub');
+  const check = $('#setCheck');
+  if (title) title.textContent = ok ? '已获取模型' : (cfg.baseUrl ? '尚未获取模型' : '未配置接口');
+  if (sub) {
+    sub.textContent = ok
+      ? '已成功连接到您的模型，请开始使用吧！'
+      : (cfg.baseUrl ? '已填写地址但未取到模型，点右侧刷新重试。' : '填写接口地址与 Key 后保存即可拉取模型。');
+    sub.title = cfg.baseUrl || '';
+  }
+  if (check) check.classList.toggle('pending', !ok);
+  $('#modelCount').textContent = n;
 }
 
 function renderSettings() {
@@ -2912,10 +3052,35 @@ function updateProviderUI() {
   if (deepseek && url.dataset.provider !== 'deepseek') url.value = 'https://api.deepseek.com';
   if (!deepseek && url.dataset.provider === 'deepseek') url.value = '';
   url.dataset.provider = deepseek ? 'deepseek' : 'custom';
-  $('#providerHint').textContent = deepseek
+  const hint = $('#providerHintText') || $('#providerHint');
+  hint.textContent = deepseek
     ? 'DeepSeek 官方接口主要提供文本/对话模型，不提供图片生成接口；可用于提示词相关能力。'
-    : '填写地址与 Key 后保存，自动从 /models 拉取模型。';
+    : '您的密钥将安全加密存储，仅用于 API 请求';
+  $('#providerHint').classList.toggle('warn', deepseek);
+  syncProviderSeg();
 }
+
+function syncProviderSeg() {
+  const seg = $('#setProviderSeg');
+  if (!seg) return;
+  const val = $('#cfgProvider').value || 'custom';
+  const btns = Array.prototype.slice.call(seg.querySelectorAll('[data-provider]'));
+  const i = Math.max(0, btns.findIndex(b => b.dataset.provider === val));
+  btns.forEach(b => {
+    const on = b.dataset.provider === val;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+  const thumb = seg.querySelector('.set-seg-thumb');
+  if (thumb) thumb.style.transform = 'translateX(' + (i * 100) + '%)';
+}
+
+$('#setProviderSeg').addEventListener('click', event => {
+  const btn = event.target.closest('[data-provider]');
+  if (!btn) return;
+  $('#cfgProvider').value = btn.dataset.provider;
+  updateProviderUI();
+});
 
 $('#cfgProvider').addEventListener('change', updateProviderUI);
 $('#btnSaveCfg').addEventListener('click', async () => {
@@ -2932,11 +3097,12 @@ $('#btnSaveCfg').addEventListener('click', async () => {
   updateModelUI();
 
   const btn = $('#btnSaveCfg');
+  const label = btn.querySelector('.btn-text');
   btn.disabled = true;
-  btn.innerHTML = '<span class="btn-text"><span class="spinner"></span>获取模型中…</span>';
+  if (label) label.innerHTML = '<span class="spinner"></span>获取模型中…';
   const ok = await refreshModels(false);
   btn.disabled = false;
-  btn.innerHTML = '<span class="btn-text">保存并获取模型</span>';
+  if (label) label.textContent = '保存并连接模型';
 
   toast(ok ? '配置已保存，模型已获取' : '配置已保存，但获取模型失败，请检查地址与 Key', 3200);
   renderCfgStatus();
@@ -2945,11 +3111,14 @@ $('#btnSaveCfg').addEventListener('click', async () => {
 $('#btnRefreshModels').addEventListener('click', async () => {
   if (!cfg.baseUrl) return toast('请先填写接口地址');
   const btn = $('#btnRefreshModels');
+  const label = btn.querySelector('span');
   btn.disabled = true;
-  btn.textContent = '获取中…';
+  btn.classList.add('spinning');
+  if (label) label.textContent = '获取中…';
   await refreshModels(true);
   btn.disabled = false;
-  btn.textContent = '刷新';
+  btn.classList.remove('spinning');
+  if (label) label.textContent = '刷新';
   renderCfgStatus();
 });
 
@@ -2957,8 +3126,14 @@ $('#btnToggleKey').addEventListener('click', () => {
   const inp = $('#cfgApiKey');
   const show = inp.type === 'password';
   inp.type = show ? 'text' : 'password';
-  $('#btnToggleKey').textContent = show ? '隐藏' : '显示';
+  $('#btnToggleKey').setAttribute('aria-label', show ? '隐藏密钥' : '显示密钥');
+  const open = $('#eyeOpen'), off = $('#eyeOff');
+  if (open && off) {
+    open.style.display = show ? 'none' : '';
+    off.style.display = show ? '' : 'none';
+  }
 });
+
 
 $('#btnExport').addEventListener('click', () => {
   const data = { exportedAt: Date.now(), config: { baseUrl: cfg.baseUrl, models: cfg.models }, history, visionHistory };
