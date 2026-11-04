@@ -1027,16 +1027,6 @@ body.setting-open #creditFloat{opacity:0!important;transform:scale(.86)!importan
   .pl-card{border-radius:20px!important}
   #view-cases.active{padding:2px 2px 14px!important;gap:9px!important}
 }
-
-/* ===== 灵感案例 → 提示词库（原有案例 DOM 全保留，仅隐藏，避免旧脚本报错） ===== */
-#view-cases > .pl-search,
-#view-cases > .pl-cats,
-#view-cases > .pl-grid,
-#view-cases > .pl-empty { display:none !important; }
-#promptLibFrame {
-  display:block !important; flex:1 1 auto !important; width:100% !important;
-  min-height:0 !important; border:0 !important; background:transparent !important;
-}
 </style>
 </head>
 <body>
@@ -1237,12 +1227,12 @@ body.setting-open #creditFloat{opacity:0!important;transform:scale(.86)!importan
     <!-- ========== 案例 ========== -->
     <section id="view-cases" class="view">
 
-      <div class="pl-search">
+      <div class="pl-search" hidden>
         <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
         <input type="text" id="plSearch" placeholder="搜索提示词、风格、模型..." autocomplete="off">
       </div>
 
-      <div class="pl-cats" id="plCats">
+      <div class="pl-cats" id="plCats" hidden>
         <button class="pl-chip active" type="button" data-cat="all">全部</button>
         <button class="pl-chip" type="button" data-cat="mj">Midjourney</button>
         <button class="pl-chip" type="button" data-cat="sd">Stable Diffusion</button>
@@ -1255,9 +1245,8 @@ body.setting-open #creditFloat{opacity:0!important;transform:scale(.86)!importan
         <button class="pl-chip" type="button" data-cat="chinese">国风</button>
       </div>
 
-      <div class="pl-grid" id="plGrid"></div>
+      <div class="pl-grid" id="plGrid" hidden></div>
 
-      <!-- 灵感案例：整页换成 8094 上那套提示词库（同源 HTTPS，避免混合内容被拦） -->
       <iframe id="promptLibFrame"
               src="https://ccc2200ccc.github.io/stapp/prompts/index.html"
               title="提示词库" allow="clipboard-write"
@@ -3839,38 +3828,6 @@ void main(){vec3 color=texture(uField,vUv).rgb;vec2 pixel=gl_FragCoord.xy+uFrame
 
 
 
-</script>
-
-<script>
-/* 词库弹窗点「复制本条提示词」时，顺手把全文填进生图框并跳回「图像创作」。
-   全程 try/catch，失败也不影响词库本身使用。 */
-(function () {
-  var f = document.getElementById('promptLibFrame');
-  if (!f) return;
-  f.addEventListener('load', function () {
-    try {
-      var d = f.contentDocument, w = f.contentWindow;
-      if (!d || !w) return;
-      var btn = d.getElementById('diceCopy');
-      if (!btn || btn.getAttribute('data-lj-bridge')) return;
-      btn.setAttribute('data-lj-bridge', '1');
-      btn.addEventListener('click', function () {
-        setTimeout(function () {
-          var t = w._lastDiceText || '';
-          if (!t) return;
-          var box = document.getElementById('promptInput');
-          if (box) {
-            box.value = t;
-            box.dispatchEvent(new Event('input', { bubbles: true }));
-            try { updatePromptCount(); } catch (e) {}
-          }
-          try { switchView('generate'); } catch (e) {}
-          try { moveNavSlider(); } catch (e) {}
-        }, 150);
-      });
-    } catch (e) {}
-  });
-})();
 </script>
 </body>
 </html>
