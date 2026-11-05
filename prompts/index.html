@@ -112,13 +112,22 @@
   /* 网格 */
   .prompt-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
     gap: 16px;
     padding: 16px 20px 20px;
     max-width: 960px;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
     margin: 0 auto;
     content-visibility: auto;
   }
+
+  /* 彻底杜绝横向溢出：卡片永远不比容器宽 */
+  html, body { max-width: 100%; }
+  .prompt-card { min-width: 0; max-width: 100%; }
+  .prompt-card-img-wrap { width: 100%; }
+  .prompt-card-img { max-width: 100%; }
 
   /* 卡片 */
   .prompt-card {
@@ -515,14 +524,22 @@ body { padding-top: 112px !important; }
 .topbar {
   position: fixed; top: 0; left: 0; right: 0;
   z-index: 9998;
-  padding: 10px 14px 6px;
-  background: rgba(255,255,255,0.94);
-  -webkit-backdrop-filter: blur(18px) saturate(160%);
-  backdrop-filter: blur(18px) saturate(160%);
-  border-bottom: 0.5px solid rgba(0,0,0,0.09);
-  box-shadow: 0 6px 22px rgba(0,0,0,0.14);
+  padding: 8px 10px 0;
+  background: transparent;
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border-bottom: none;
+  box-shadow: none;
 }
-.topbar-row { display: flex; align-items: center; gap: 10px; }
+/* 白条只包第一行，70% 透明，左右各留 10px 不再铺满整屏 */
+.topbar-row {
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(255,255,255,0.70);
+  border: 0.5px solid rgba(255,255,255,0.55);
+  border-radius: 18px;
+  padding: 6px 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+}
 
 /* 搜索框：让出右侧给圆形按钮，同一排 */
 .topbar .search-bar {
@@ -581,17 +598,24 @@ body { padding-top: 112px !important; }
 }
 .topbar .view-switch button.pop { animation: viewBtnPop .42s cubic-bezier(.34,1.56,.64,1); }
 
-/* 风格导航：白底上的深色胶囊 */
-.topbar .category-scroll { padding: 10px 0 8px !important; gap: 7px; }
+/* 风格导航：这一行没有任何背景，只有胶囊本身，浮在渐变上 */
+.topbar .category-scroll {
+  padding: 10px 2px 8px !important;
+  gap: 7px;
+  background: transparent !important;
+}
 .topbar .category-chip {
-  background: rgba(0,0,0,0.055) !important;
-  border-color: rgba(0,0,0,0.10) !important;
-  color: #48484a !important;
+  background: rgba(255,255,255,0.16) !important;
+  border-color: rgba(255,255,255,0.42) !important;
+  color: rgba(255,255,255,0.94) !important;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
 }
 .topbar .category-chip.active {
-  background: #1c1c1e !important;
-  border-color: #1c1c1e !important;
-  color: #fff !important;
+  background: rgba(74,222,222,0.92) !important;
+  border-color: rgba(74,222,222,0.95) !important;
+  color: #08201f !important;
+  font-weight: 700;
 }
 
 /* 原站视图：白条和两个圆形按钮始终保留，只收起风格分类行 */
