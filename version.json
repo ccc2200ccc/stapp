@@ -1,5 +1,5 @@
 {
-  "version": "99.0.13",
+  "version": "99.0.14",
   "url": "https://ccc2200ccc.github.io/stapp/index.html",
-  "notes": "灵感案例替换为提示词库"
+  "notes": "悬浮状态同步弹窗状态页；移除重复的模型与价格面板"
 }
