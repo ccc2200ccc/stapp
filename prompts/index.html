@@ -509,42 +509,170 @@
 }
 #officialView.show { display: block; }
 #officialView iframe { width: 100%; height: 100%; border: none; }
+
+/* ===== 顶部白色工具区 · 吸顶不随卡片滑动 ===== */
+body { padding-top: 112px !important; }
+.topbar {
+  position: fixed; top: 0; left: 0; right: 0;
+  z-index: 9998;
+  padding: 10px 14px 6px;
+  background: rgba(255,255,255,0.94);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: blur(18px) saturate(160%);
+  border-bottom: 0.5px solid rgba(0,0,0,0.09);
+  box-shadow: 0 6px 22px rgba(0,0,0,0.14);
+}
+.topbar-row { display: flex; align-items: center; gap: 10px; }
+
+/* 搜索框：让出右侧给圆形按钮，同一排 */
+.topbar .search-bar {
+  margin: 0 !important;
+  flex: 1 1 auto !important;
+  min-width: 0;
+  height: 38px !important;
+  background: rgba(0,0,0,0.055) !important;
+  border: 0.5px solid rgba(0,0,0,0.10) !important;
+}
+.topbar .search-bar svg { stroke: #6b6b70; }
+.topbar .search-bar input { color: #1c1c1e; }
+.topbar .search-bar input::placeholder { color: #8e8e93; }
+
+/* 切换按钮：不再浮动，改成右上角圆形图标 + 白底 */
+.topbar .view-switch {
+  position: static !important;
+  flex: 0 0 auto;
+  display: flex; gap: 8px;
+  padding: 0 !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  box-shadow: none;
+}
+.topbar .view-switch button {
+  width: 38px !important; height: 38px !important;
+  padding: 0 !important;
+  border-radius: 50% !important;
+  display: flex; align-items: center; justify-content: center;
+  background: #fff !important;
+  border: 0.5px solid rgba(0,0,0,0.10) !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  color: #48484a !important;
+  font-size: 0;
+  transition: transform .28s cubic-bezier(.34,1.56,.64,1), background .25s, box-shadow .25s;
+  -webkit-tap-highlight-color: transparent;
+}
+.topbar .view-switch button svg {
+  width: 18px; height: 18px;
+  stroke: currentColor; fill: none; stroke-width: 1.9;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.topbar .view-switch button.active {
+  background: #4adede !important;
+  color: #fff !important;
+  box-shadow: 0 4px 14px rgba(74,222,222,0.55);
+}
+.topbar .view-switch button:active { transform: scale(0.86) rotate(-12deg); }
+@keyframes viewBtnPop {
+  0%   { transform: scale(1); }
+  45%  { transform: scale(1.22) rotate(10deg); }
+  100% { transform: scale(1); }
+}
+.topbar .view-switch button.pop { animation: viewBtnPop .42s cubic-bezier(.34,1.56,.64,1); }
+
+/* 风格导航：白底上的深色胶囊 */
+.topbar .category-scroll { padding: 10px 0 8px !important; gap: 7px; }
+.topbar .category-chip {
+  background: rgba(0,0,0,0.055) !important;
+  border-color: rgba(0,0,0,0.10) !important;
+  color: #48484a !important;
+}
+.topbar .category-chip.active {
+  background: #1c1c1e !important;
+  border-color: #1c1c1e !important;
+  color: #fff !important;
+}
+
+/* 切到原站视图时收起白条 */
+body:has(#officialView.show) { padding-top: 0 !important; }
+body:has(#officialView.show) .topbar { display: none; }
+
+/* 图片在卡片里居中显示 */
+.prompt-card-img-wrap { display: flex; align-items: center; justify-content: center; }
+.prompt-card-img { object-fit: cover; object-position: center center; }
+
+/* ===== 一键置顶透明按钮 ===== */
+.to-top-btn {
+  position: fixed;
+  left: 50%; bottom: calc(14px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 9996;
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,0.14);
+  border: 0.5px solid rgba(255,255,255,0.48);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  color: #fff; cursor: pointer;
+  opacity: 0; pointer-events: none;
+  transition: opacity .3s ease, transform .25s cubic-bezier(.34,1.56,.64,1);
+  -webkit-tap-highlight-color: transparent;
+}
+.to-top-btn.show { opacity: 1; pointer-events: auto; }
+.to-top-btn svg {
+  width: 20px; height: 20px;
+  stroke: currentColor; fill: none; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.to-top-btn:active { transform: translateX(-50%) scale(0.86); }
+
 </style>
 </style>
 </style>
 </head>
 <body>
 
-<!-- 视图切换 -->
-<div class="view-switch">
-  <button id="btnCard" class="active" onclick="switchView('card')">卡片视图</button>
-  <button id="btnOfficial" onclick="switchView('official')">原站视图</button>
+<!-- 顶部工具区：白色背景 + 吸顶，滑动卡片时始终在最顶层 -->
+<div class="topbar" id="topbar">
+  <div class="topbar-row">
+    <!-- 搜索栏 -->
+    <div class="search-bar">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+      <input type="text" placeholder="搜索提示词、风格、模型..." id="searchInput" />
+    </div>
+
+    <!-- 右上角圆形图标切换按钮 -->
+    <div class="view-switch">
+      <button id="btnCard" class="active" type="button" title="卡片视图" aria-label="卡片视图" onclick="switchView('card')">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+      </button>
+      <button id="btnOfficial" type="button" title="原站视图" aria-label="原站视图" onclick="switchView('official')">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.7 3.8 9S14.5 18.4 12 21c-2.5-2.6-3.8-5.7-3.8-9S9.5 5.6 12 3z"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- 风格导航：切换按钮下面一排，随工具区一起吸顶 -->
+  <div class="category-scroll" id="categoryScroll">
+    <div class="category-chip active" data-cat="all">全部</div>
+    <div class="category-chip" data-cat="mj">Midjourney</div>
+    <div class="category-chip" data-cat="sd">Stable Diffusion</div>
+    <div class="category-chip" data-cat="flux">Flux</div>
+    <div class="category-chip" data-cat="niji">Niji</div>
+    <div class="category-chip" data-cat="cinematic">电影感</div>
+    <div class="category-chip" data-cat="character">角色设计</div>
+    <div class="category-chip" data-cat="3d">3D 渲染</div>
+    <div class="category-chip" data-cat="concept">概念艺术</div>
+    <div class="category-chip" data-cat="chinese">国风</div>
+  </div>
 </div>
+
 <!-- 官方原生页面 -->
 <div id="officialView">
   <iframe src="https://prompt.qqsrc.com/" title="水仙原站"></iframe>
 </div>
 
-
-<!-- 搜索栏 -->
-<div class="search-bar">
-  <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
-  <input type="text" placeholder="搜索提示词、风格、模型..." id="searchInput" />
-</div>
-
-<!-- 分类 -->
-<div class="category-scroll" id="categoryScroll">
-  <div class="category-chip active" data-cat="all">全部</div>
-  <div class="category-chip" data-cat="mj">Midjourney</div>
-  <div class="category-chip" data-cat="sd">Stable Diffusion</div>
-  <div class="category-chip" data-cat="flux">Flux</div>
-  <div class="category-chip" data-cat="niji">Niji</div>
-  <div class="category-chip" data-cat="cinematic">电影感</div>
-  <div class="category-chip" data-cat="character">角色设计</div>
-  <div class="category-chip" data-cat="3d">3D 渲染</div>
-  <div class="category-chip" data-cat="concept">概念艺术</div>
-  <div class="category-chip" data-cat="chinese">国风</div>
-</div>
 
 <!-- 卡片网格 -->
 <div class="prompt-grid" id="grid"></div>
@@ -1144,6 +1272,53 @@ document.addEventListener("DOMContentLoaded", function(){
   var copyBtn = document.getElementById('diceCopy');
   if(copyBtn) copyBtn.onclick = function(){ safeCopy(window._lastDiceText || ''); };
 });
+</script>
+
+
+<button id="toTopBtn" class="to-top-btn" type="button" title="回到顶部" aria-label="回到顶部">
+  <svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+</button>
+
+<script>
+/* 切换按钮点击弹跳反馈 + 一键置顶 */
+(function () {
+  ['btnCard','btnOfficial'].forEach(function (id) {
+    var b = document.getElementById(id);
+    if (!b) return;
+    b.addEventListener('click', function () {
+      b.classList.remove('pop');
+      void b.offsetWidth;
+      b.classList.add('pop');
+      setTimeout(function () { b.classList.remove('pop'); }, 440);
+    });
+  });
+
+  var top = document.getElementById('toTopBtn');
+  if (!top) return;
+  var ticking = false;
+  function sync() {
+    var y = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+    if (y > 180) top.classList.add('show');
+    else top.classList.remove('show');
+    ticking = false;
+  }
+  window.addEventListener('scroll', function () {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(sync);
+  }, { passive: true });
+  document.addEventListener('DOMContentLoaded', sync);
+  sync();
+  top.addEventListener('click', function () {
+    var opt = { top: 0, behavior: 'smooth' };
+    try { window.scrollTo(opt); } catch (e) { window.scrollTo(0, 0); }
+    try { document.body.scrollTo(opt); } catch (e) { document.body.scrollTop = 0; }
+    try {
+      var sc = document.scrollingElement || document.documentElement;
+      if (sc && sc !== document.body) sc.scrollTo(opt);
+    } catch (e) { document.documentElement.scrollTop = 0; }
+  });
+})();
 </script>
 
 </body>
