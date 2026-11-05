@@ -1227,30 +1227,15 @@ body.setting-open #creditFloat{opacity:0!important;transform:scale(.86)!importan
     <!-- ========== 案例 ========== -->
     <section id="view-cases" class="view">
 
-      <div class="pl-search" hidden>
-        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
-        <input type="text" id="plSearch" placeholder="搜索提示词、风格、模型..." autocomplete="off">
-      </div>
-
-      <div class="pl-cats" id="plCats" hidden>
-        <button class="pl-chip active" type="button" data-cat="all">全部</button>
-        <button class="pl-chip" type="button" data-cat="mj">Midjourney</button>
-        <button class="pl-chip" type="button" data-cat="sd">Stable Diffusion</button>
-        <button class="pl-chip" type="button" data-cat="flux">Flux</button>
-        <button class="pl-chip" type="button" data-cat="niji">Niji</button>
-        <button class="pl-chip" type="button" data-cat="cinematic">电影感</button>
-        <button class="pl-chip" type="button" data-cat="character">角色设计</button>
-        <button class="pl-chip" type="button" data-cat="3d">3D 渲染</button>
-        <button class="pl-chip" type="button" data-cat="concept">概念艺术</button>
-        <button class="pl-chip" type="button" data-cat="chinese">国风</button>
-      </div>
-
-      <div class="pl-grid" id="plGrid" hidden></div>
+      <!-- 旧案例界面已整体移除，只保留 3 个不可见空节点，供原有脚本取用，避免报错 -->
+      <input type="text" id="plSearch" hidden>
+      <div id="plCats" hidden></div>
+      <div id="plGrid" hidden></div>
 
       <iframe id="promptLibFrame"
               src="https://ccc2200ccc.github.io/stapp/prompts/index.html"
               title="提示词库" allow="clipboard-write"
-              style="flex:1 1 auto;width:100%;height:70dvh;min-height:70dvh;border:0;display:block;background:transparent;"></iframe>
+              style="flex:0 0 auto;display:block;width:100%;height:calc(100dvh - 150px);min-height:420px;border:0;background:transparent;border-radius:14px;"></iframe>
     </section>
 
     <!-- ========== 设置 ========== -->
