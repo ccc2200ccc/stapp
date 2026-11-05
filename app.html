@@ -1027,6 +1027,23 @@ body.setting-open #creditFloat{opacity:0!important;transform:scale(.86)!importan
   .pl-card{border-radius:20px!important}
   #view-cases.active{padding:2px 2px 14px!important;gap:9px!important}
 }
+
+/* ===== 灵感案例：词库窗口撑满可用高度，消除底部空白 ===== */
+#view-cases.active {
+  display: flex !important;
+  flex-direction: column !important;
+  padding-bottom: 88px !important;
+  overflow: hidden !important;
+}
+#view-cases #promptLibFrame {
+  flex: 1 1 auto !important;
+  height: auto !important;
+  min-height: 0 !important;
+  width: 100% !important;
+  margin: 0 !important;
+  border-radius: 20px;
+}
+
 </style>
 </head>
 <body>
@@ -1233,9 +1250,9 @@ body.setting-open #creditFloat{opacity:0!important;transform:scale(.86)!importan
       <div id="plGrid" hidden></div>
 
       <iframe id="promptLibFrame"
-              src="https://ccc2200ccc.github.io/stapp/prompts/index.html"
+              src="https://ccc2200ccc.github.io/stapp/prompts/index.html?v=5"
               title="提示词库" allow="clipboard-write"
-              style="flex:0 0 auto;display:block;width:100%;height:calc(100dvh - 150px);min-height:420px;border:0;background:transparent;border-radius:14px;"></iframe>
+              style="flex:1 1 auto;display:block;width:100%;height:auto;min-height:0;border:0;background:transparent;border-radius:20px;"></iframe>
     </section>
 
     <!-- ========== 设置 ========== -->
