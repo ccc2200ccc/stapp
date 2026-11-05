@@ -3914,5 +3914,209 @@ body.floats-hidden #creditFloat { display: none !important; }
   if (nav) nav.addEventListener('click', function () { setTimeout(sync, 0); });
 })();
 </script>
+
+<!-- 悬浮球实时显示：上面=当前面板所选模型状态，下面=该模型价格（原有 DOM / JS 一行未改） -->
+<style id="floatInfo">
+#statusFloat[data-info="1"] button {
+  flex-direction: column;
+  gap: 1px;
+  font-size: 10.5px;
+  line-height: 1.15;
+  padding: 0 5px;
+  box-sizing: border-box;
+}
+.fi-line { display: flex; align-items: center; justify-content: center; gap: 4px; max-width: 100%; }
+.fi-dot { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; }
+.fi-dot.ok    { background: #34c759; box-shadow: 0 0 0 1px rgba(255,255,255,.65), 0 0 6px rgba(52,199,89,.75); }
+.fi-dot.bad   { background: #ff453a; animation: fiBlink .9s ease-in-out infinite; }
+.fi-dot.wait  { background: #ff9f0a; animation: fiPulse 1.2s ease-in-out infinite; }
+@keyframes fiBlink {
+  0%,100% { opacity: 1;   box-shadow: 0 0 0 1px rgba(255,255,255,.65), 0 0 0 0   rgba(255,69,58,.6); }
+  50%     { opacity: .3;  box-shadow: 0 0 0 1px rgba(255,255,255,.65), 0 0 0 6px rgba(255,69,58,0); }
+}
+@keyframes fiPulse { 0%,100% { opacity: 1 } 50% { opacity: .4 } }
+.fi-main { font-size: 10.5px; font-weight: 700; white-space: nowrap; color: #17211c; }
+.fi-main.fi-price { font-size: 11px; color: #0a6b6b; letter-spacing: -.2px; }
+.fi-main.fi-bad { color: #a52a22; }
+.fi-sub {
+  display: block; max-width: 58px; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; font-size: 7.5px; font-weight: 500; line-height: 1.2;
+  opacity: .6; color: #17211c; letter-spacing: 0;
+}
+.fi-price-wrap { display: flex; align-items: center; justify-content: center; gap: 2px; }
+.fi-yen { font-size: 8.5px; font-weight: 700; opacity: .75; }
+@media (prefers-reduced-motion: reduce) {
+  .fi-dot.bad, .fi-dot.wait { animation: none; }
+  .fi-dot.bad { opacity: 1; box-shadow: 0 0 0 2px rgba(255,69,58,.45); }
+}
+</style>
+<script>
+(function () {
+  var SF = document.getElementById('statusFloat');
+  if (!SF) return;
+  var bStatus = SF.querySelector('[data-float-tab="status"]');
+  var bPrice  = SF.querySelector('[data-float-tab="prices"]');
+  if (!bStatus || !bPrice) return;
+  SF.setAttribute('data-info', '1');
+
+  /* ---------- 1. 价格表：直接读 APP 内置的「模型与价格」离线快照 ---------- */
+  var PRICE = {}, PRICE_LIST = [];
+  try {
+    var enc = document.getElementById('modelPricesDocument');
+    if (enc) {
+      var bytes = Uint8Array.from(atob(enc.textContent.trim()), function (c) { return c.charCodeAt(0); });
+      var doc = new TextDecoder().decode(bytes);
+      var sm = doc.match(/<script id="snapshot"[^>]*>([\s\S]*?)<\/script>/);
+      if (sm) {
+        var snap = JSON.parse(sm[1]);
+        (snap.models || []).forEach(function (x) {
+          if (!x || !x.id) return;
+          PRICE[String(x.id).toLowerCase().trim()] = x;
+          PRICE_LIST.push(x);
+        });
+      }
+    }
+  } catch (e) {}
+
+  function priceOf(model) {
+    if (!model) return null;
+    var k = String(model).toLowerCase().trim();
+    var x = PRICE[k];
+    if (!x) {                                   // 宽松匹配：用户 API 的模型名常带前缀/后缀
+      for (var i = 0; i < PRICE_LIST.length; i++) {
+        var id = String(PRICE_LIST[i].id).toLowerCase();
+        if (k.indexOf(id) !== -1 || id.indexOf(k) !== -1) { x = PRICE_LIST[i]; break; }
+      }
+    }
+    if (!x) return null;
+    var v;
+    if (x.type === 'image')      v = (x.textToImagePrice != null ? x.textToImagePrice : x.imagePrice);
+    else if (x.type === 'video') v = x.videoPrice;
+    else                         v = (x.textPricePer100 != null ? x.textPricePer100 : x.textPricePerRequest);
+    if (v == null || !isFinite(Number(v))) return null;
+    var n = Number(v);
+    if (n === 0) return { main: '免费', unit: '' };
+    var unit = x.type === 'image' ? '分/张' : (x.type === 'video' ? '分/视频' : '分/次');
+    var num = n.toLocaleString('zh-CN', { maximumFractionDigits: 2 });
+    return { main: num, unit: unit };
+  }
+
+  /* ---------- 2. 当前面板 → 对应模型 ---------- */
+  function currentCtx() {
+    var view = 'generate', model = '', base = '';
+    try { if (typeof currentView !== 'undefined') view = currentView; } catch (e) {}
+    try { if (typeof cfg !== 'undefined') base = cfg.baseUrl || ''; } catch (e) {}
+    try {
+      model = (view === 'prompts')
+        ? (typeof visionModel === 'function' ? visionModel() : '')
+        : (typeof genModel === 'function' ? genModel() : '');
+    } catch (e) {}
+    return {
+      view: view, model: model || '', base: base,
+      isVision: view === 'prompts',
+      role: view === 'prompts' ? '反推模型' : '绘图模型',
+      priceRole: view === 'prompts' ? '反推价' : '绘图价'
+    };
+  }
+  function shortName(s) {
+    if (!s) return '未选择';
+    s = String(s);
+    return s.length > 24 ? s.slice(0, 23) + '…' : s;   // 具体宽度交给 CSS ellipsis
+  }
+
+  /* ---------- 3. 状态探测：拿当前接口 /models 验证，并检查所选模型是否在列 ---------- */
+  var netCache = { base: '', ts: 0, ok: false, ids: [] };
+  function setState(kind, label) {
+    dotKind = kind; dotLabel = label; render();
+  }
+  function probe(ctx, key, force) {
+    // 按「当前面板所选模型」判断状态：接口要通 + 该模型要在可用列表里
+    function apply() {
+      if (!ctx.base || !ctx.model) { setState('bad', '未配置'); return; }
+      if (!netCache.ok) { setState('bad', '异常'); return; }
+      var listed = netCache.ids.indexOf(String(ctx.model).toLowerCase()) !== -1;
+      setState(listed ? 'ok' : 'bad', listed ? '正常' : '模型异常');
+    }
+    var now = Date.now();
+    // 同一接口 60 秒内复用探测结果，切面板/换模型只重算、不重复打接口
+    if (!force && netCache.ts && netCache.base === ctx.base && now - netCache.ts < 60000) {
+      apply(); return;
+    }
+    if (!ctx.base || !ctx.model) { apply(); return; }
+    setState('wait', '检测中');
+    var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    var timer = setTimeout(function () { if (ctl) ctl.abort(); }, 8000);
+    var url = ctx.base.replace(/\/+$/, '') + '/models';
+    var opts = { headers: {} };
+    try { opts.headers = (typeof authHeaders === 'function') ? authHeaders() : {}; } catch (e) {}
+    if (ctl) opts.signal = ctl.signal;
+
+    function finish(ok, ids) {
+      clearTimeout(timer);
+      netCache = { base: ctx.base, ts: Date.now(), ok: ok, ids: ids || [] };
+      apply();
+    }
+    fetch(url, opts).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.text();
+    }).then(function (txt) {
+      var j, arr = [];
+      try { j = JSON.parse(txt); } catch (e) { j = null; }
+      if (Array.isArray(j)) arr = j;
+      else if (j) arr = j.data || j.models || j.result || j.list || [];
+      if (!Array.isArray(arr)) arr = [];
+      var ids = arr.map(function (o) {
+        return typeof o === 'string' ? o : (o && (o.id || o.name || o.model || o.model_name) || '');
+      }).filter(Boolean).map(function (s) { return String(s).toLowerCase(); });
+      finish(true, ids);
+    }).catch(function () {
+      finish(false, []);
+    });
+  }
+
+  /* ---------- 4. 渲染（只在数据变化时重建，避免打断红点闪烁动画） ---------- */
+  var dotKind = 'wait', dotLabel = '检测中', lastModel = '', lastRole = '', lastPrice = '';
+  function render() {
+    var ctx = currentCtx();
+    var p = priceOf(ctx.model);
+    var sub = shortName(ctx.model);
+    var stColor = dotKind === 'bad' ? ' fi-bad' : '';
+    bStatus.innerHTML =
+      '<span class="fi-line"><span class="fi-dot ' + dotKind + '"></span>' +
+      '<span class="fi-main' + stColor + '">' + dotLabel + '</span></span>' +
+      '<span class="fi-sub" title="' + sub.replace(/"/g, '') + '">' + sub + '</span>';
+    bPrice.innerHTML = p
+      ? '<span class="fi-price-wrap"><span class="fi-main fi-price">' + p.main +
+          (p.unit ? '<span class="fi-yen">' + p.unit + '</span>' : '') + '</span></span>' +
+        '<span class="fi-sub">' + ctx.priceRole + '</span>'
+      : '<span class="fi-main">未收录</span><span class="fi-sub">' + ctx.priceRole + '</span>';
+    bStatus.setAttribute('aria-label', '模型状态：' + dotLabel + '，' + ctx.role + ' ' + (ctx.model || '未选择') + '（点按查看详情）');
+    bPrice.setAttribute('aria-label', '当前' + ctx.role + (p ? '价格 ' + p.main + p.unit : '价格未收录') + '（点按查看价目表）');
+  }
+
+  /* ---------- 5. 实时同步：切面板 / 换模型 / 改接口 都立刻跟着变 ---------- */
+  var lastKey = '';
+  function sync() {
+    if (document.body.classList.contains('floats-hidden')) { lastKey = ''; return; }
+    var ctx = currentCtx();
+    var key = ctx.view + '|' + ctx.model + '|' + ctx.base;
+    if (key === lastKey) return;
+    lastKey = key;
+    render();
+    probe(ctx, key, false);
+  }
+  sync();
+  setInterval(sync, 600);
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden && lastKey) {
+      var ctx = currentCtx();
+      probe(ctx, lastKey, true);
+    }
+  });
+  setInterval(function () {
+    if (!document.hidden && lastKey) probe(currentCtx(), lastKey, true);
+  }, 60000);
+})();
+</script>
 </body>
 </html>
