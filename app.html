@@ -3814,5 +3814,53 @@ void main(){vec3 color=texture(uField,vUv).rgb;vec2 pixel=gl_FragCoord.xy+uFrame
 
 
 </script>
+
+<!-- 词库「使用」按钮 → 覆盖填入生图提示词框（不改任何原有代码） -->
+<script>
+(function () {
+  var f = document.getElementById('promptLibFrame');
+  if (!f) return;
+
+  function apply(text) {
+    text = String(text || '');
+    if (!text) return;
+    // fillForm 内部是 value = text（覆盖），并清掉旧草稿、更新字数、切回生图页
+    try { fillForm({ prompt: text }); }
+    catch (e) {
+      var box = document.getElementById('promptInput');
+      if (box) {
+        box.value = text;
+        box.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      try { updatePromptCount(); } catch (e2) {}
+      try { switchView('generate'); } catch (e3) {}
+    }
+    try { toast('已带入生图框'); } catch (e4) {}
+  }
+
+  function hook() {
+    try {
+      var w = f.contentWindow, d = f.contentDocument;
+      if (!w || !d) return;
+      if (String(d.URL || '').indexOf('prompts/index.html') === -1) return;
+      // 词库页 usePrompt(text) 会调用 window.onPromptUse(text)
+      w.onPromptUse = apply;
+      w.__ljUseHooked = true;
+    } catch (e) {}
+  }
+
+  f.addEventListener('load', hook);
+  if (f.contentDocument && f.contentDocument.readyState === 'complete') hook();
+  document.addEventListener('DOMContentLoaded', hook);
+
+  // iframe 懒加载或重新导航时补挂，8 秒后停止，不常驻
+  var n = 0;
+  var timer = setInterval(function () {
+    hook();
+    try { if (f.contentWindow && f.contentWindow.__ljUseHooked) clearInterval(timer); } catch (e) {}
+    if (++n > 20) clearInterval(timer);
+  }, 400);
+})();
+</script>
 </body>
 </html>
