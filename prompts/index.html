@@ -594,9 +594,38 @@ body { padding-top: 112px !important; }
   color: #fff !important;
 }
 
-/* 切到原站视图时收起白条 */
-body:has(#officialView.show) { padding-top: 0 !important; }
-body:has(#officialView.show) .topbar { display: none; }
+/* 原站视图：白条和两个圆形按钮始终保留，只收起风格分类行 */
+body.official-mode { padding-top: 62px !important; }
+body.official-mode .topbar .category-scroll { display: none; }
+body.official-mode .topbar .search-bar { display: none; }
+body.official-mode #officialView { top: 62px !important; }
+body.official-mode #btnBackCard { display: flex !important; }
+
+/* 返回卡片视图按钮（仅原站模式出现） */
+#btnBackCard {
+  display: none;
+  flex: 1 1 auto; min-width: 0;
+  height: 38px; align-items: center; gap: 6px;
+  padding: 0 14px; border-radius: 19px;
+  background: rgba(0,0,0,0.06);
+  border: 0.5px solid rgba(0,0,0,0.10);
+  color: #1c1c1e; font-size: 13px; font-weight: 600;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+  transition: transform .25s cubic-bezier(.34,1.56,.64,1);
+}
+#btnBackCard svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+#btnBackCard:active { transform: scale(0.95); }
+
+/* 原站嵌套受限时的温和提示，不遮挡内容 */
+#officialTip {
+  position: absolute; left: 12px; right: 12px; bottom: calc(16px + env(safe-area-inset-bottom));
+  z-index: 3; padding: 10px 14px; border-radius: 14px;
+  background: rgba(20,20,28,0.86); color: #fff;
+  font-size: 12px; line-height: 1.5; text-align: center;
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.35);
+}
+#officialTip a { color: #7ff2f2; font-weight: 600; text-decoration: none; }
 
 /* 图片在卡片里居中显示 */
 .prompt-card-img-wrap { display: flex; align-items: center; justify-content: center; }
@@ -642,6 +671,12 @@ body:has(#officialView.show) .topbar { display: none; }
       <input type="text" placeholder="搜索提示词、风格、模型..." id="searchInput" />
     </div>
 
+    <!-- 仅原站视图出现：一键切回卡片 -->
+    <button id="btnBackCard" type="button">
+      <svg viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>
+      <span>返回卡片视图</span>
+    </button>
+
     <!-- 右上角圆形图标切换按钮 -->
     <div class="view-switch">
       <button id="btnCard" class="active" type="button" title="卡片视图" aria-label="卡片视图" onclick="switchView('card')">
@@ -671,6 +706,10 @@ body:has(#officialView.show) .topbar { display: none; }
 <!-- 官方原生页面 -->
 <div id="officialView">
   <iframe src="https://prompt.qqsrc.com/" title="水仙原站"></iframe>
+  <div id="officialTip">
+    原站若显示空白，是外站不允许被嵌套打开，<b>提示词库数据没丢</b>。<br>
+    点上方「返回卡片视图」即可，或 <a href="https://prompt.qqsrc.com/" target="_blank" rel="noopener">在新窗口打开原站 ↗</a>
+  </div>
 </div>
 
 
@@ -1318,6 +1357,44 @@ document.addEventListener("DOMContentLoaded", function(){
       if (sc && sc !== document.body) sc.scrollTo(opt);
     } catch (e) { document.documentElement.scrollTop = 0; }
   });
+})();
+</script>
+
+
+<script>
+/* 原站/卡片模式同步 + 返回按钮 + 卡片未加载兜底（原有 JS 一行未改） */
+(function () {
+  var ov = document.getElementById('officialView');
+  if (ov) {
+    function sync() {
+      document.body.classList.toggle('official-mode', ov.classList.contains('show'));
+    }
+    if (window.MutationObserver) {
+      new MutationObserver(sync).observe(ov, { attributes: true, attributeFilter: ['class'] });
+    }
+    document.addEventListener('DOMContentLoaded', sync);
+    sync();
+  }
+  var back = document.getElementById('btnBackCard');
+  if (back) back.addEventListener('click', function () {
+    try { switchView('card'); } catch (e) { if (ov) ov.classList.remove('show'); }
+  });
+
+  // 若 3.5 秒后卡片区仍为空，给一个可见的重载入口，避免误以为数据丢了
+  setTimeout(function () {
+    var g = document.getElementById('grid');
+    if (!g || g.querySelector('.prompt-card')) return;
+    if (document.body.classList.contains('official-mode')) return;
+    var tip = document.createElement('div');
+    tip.style.cssText = 'grid-column:1/-1;text-align:center;padding:26px 16px;color:#fff;font-size:13px;line-height:1.7;opacity:.85';
+    tip.innerHTML = '卡片还没加载出来（数据文件可能还在路上）<br>';
+    var b = document.createElement('button');
+    b.textContent = '点此重新加载';
+    b.style.cssText = 'margin-top:12px;padding:9px 20px;border:0.5px solid rgba(255,255,255,.4);background:rgba(255,255,255,.14);color:#fff;border-radius:20px;font-size:13px;font-weight:600;cursor:pointer';
+    b.onclick = function () { location.reload(); };
+    tip.appendChild(b);
+    g.appendChild(tip);
+  }, 3500);
 })();
 </script>
 
