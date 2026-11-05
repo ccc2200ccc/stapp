@@ -1250,7 +1250,7 @@ body.setting-open #creditFloat{opacity:0!important;transform:scale(.86)!importan
       <div id="plGrid" hidden></div>
 
       <iframe id="promptLibFrame"
-              src="https://ccc2200ccc.github.io/stapp/prompts/index.html?v=9"
+              src="https://ccc2200ccc.github.io/stapp/prompts/index.html?v=10"
               title="提示词库" allow="clipboard-write"
               style="flex:1 1 auto;display:block;width:100%;height:auto;min-height:0;border:0;background:transparent;border-radius:20px;"></iframe>
     </section>
@@ -3877,6 +3877,41 @@ void main(){vec3 color=texture(uField,vUv).rgb;vec2 pixel=gl_FragCoord.xy+uFrame
     try { if (f.contentWindow && f.contentWindow.__ljUseHooked) clearInterval(timer); } catch (e) {}
     if (++n > 20) clearInterval(timer);
   }, 400);
+})();
+</script>
+
+<!-- 积分 / 状态悬浮按钮：只在「图像创作、我的作品、图片反推」显示 -->
+<style id="floatPanels">
+body.floats-hidden #statusFloat,
+body.floats-hidden #creditFloat { display: none !important; }
+</style>
+<script>
+(function () {
+  var ALLOW = { generate: 1, history: 1, prompts: 1 };
+  function sync() {
+    var v = document.querySelector('.view.active');
+    var name = v ? String(v.id || '').replace(/^view-/, '') : '';
+    var hidden = !ALLOW[name];
+    document.body.classList.toggle('floats-hidden', hidden);
+    if (hidden) {                       // 隐藏时顺手收起状态弹窗，避免它盖在词库/设置上
+      try {
+        var m = document.getElementById('statusModal');
+        if (m) m.classList.remove('show');
+      } catch (e) {}
+    }
+  }
+  sync();
+  if (window.MutationObserver) {
+    var mo = new MutationObserver(sync);
+    var views = document.querySelectorAll('.view');
+    for (var i = 0; i < views.length; i++) {
+      mo.observe(views[i], { attributes: true, attributeFilter: ['class'] });
+    }
+  }
+  document.addEventListener('DOMContentLoaded', sync);
+  window.addEventListener('load', sync);
+  var nav = document.getElementById('bottomNav');
+  if (nav) nav.addEventListener('click', function () { setTimeout(sync, 0); });
 })();
 </script>
 </body>
