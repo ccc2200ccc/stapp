@@ -3915,39 +3915,34 @@ body.floats-hidden #creditFloat { display: none !important; }
 })();
 </script>
 
-<!-- 悬浮球实时显示：上面=当前面板所选模型状态，下面=该模型价格（原有 DOM / JS 一行未改） -->
+
+<!-- 悬浮球：状态与价格直接同步「模型状态 / 模型与价格」弹窗里的数据 -->
 <style id="floatInfo">
 #statusFloat[data-info="1"] button {
-  flex-direction: column;
-  gap: 1px;
-  font-size: 10.5px;
-  line-height: 1.15;
-  padding: 0 5px;
-  box-sizing: border-box;
+  flex-direction: column; gap: 1px; font-size: 10.5px; line-height: 1.15;
+  padding: 0 5px; box-sizing: border-box;
 }
 .fi-line { display: flex; align-items: center; justify-content: center; gap: 4px; max-width: 100%; }
 .fi-dot { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; }
-.fi-dot.ok    { background: #34c759; box-shadow: 0 0 0 1px rgba(255,255,255,.65), 0 0 6px rgba(52,199,89,.75); }
-.fi-dot.bad   { background: #ff453a; animation: fiBlink .9s ease-in-out infinite; }
-.fi-dot.wait  { background: #ff9f0a; animation: fiPulse 1.2s ease-in-out infinite; }
+.fi-dot.ok   { background: #34c759; box-shadow: 0 0 0 1px rgba(255,255,255,.65), 0 0 6px rgba(52,199,89,.75); }
+.fi-dot.bad  { background: #ff453a; animation: fiBlink .9s ease-in-out infinite; }
+.fi-dot.idle { background: #9aa4a0; box-shadow: 0 0 0 1px rgba(255,255,255,.65); }
 @keyframes fiBlink {
-  0%,100% { opacity: 1;   box-shadow: 0 0 0 1px rgba(255,255,255,.65), 0 0 0 0   rgba(255,69,58,.6); }
-  50%     { opacity: .3;  box-shadow: 0 0 0 1px rgba(255,255,255,.65), 0 0 0 6px rgba(255,69,58,0); }
+  0%,100% { opacity: 1;  box-shadow: 0 0 0 1px rgba(255,255,255,.65), 0 0 0 0   rgba(255,69,58,.6); }
+  50%     { opacity: .3; box-shadow: 0 0 0 1px rgba(255,255,255,.65), 0 0 0 6px rgba(255,69,58,0); }
 }
-@keyframes fiPulse { 0%,100% { opacity: 1 } 50% { opacity: .4 } }
 .fi-main { font-size: 10.5px; font-weight: 700; white-space: nowrap; color: #17211c; }
 .fi-main.fi-price { font-size: 11px; color: #0a6b6b; letter-spacing: -.2px; }
 .fi-main.fi-bad { color: #a52a22; }
+.fi-main.fi-idle { color: #5d6863; }
+.fi-yen { font-size: 8.5px; font-weight: 700; opacity: .75; }
 .fi-sub {
   display: block; max-width: 58px; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; font-size: 7.5px; font-weight: 500; line-height: 1.2;
   opacity: .6; color: #17211c; letter-spacing: 0;
 }
-.fi-price-wrap { display: flex; align-items: center; justify-content: center; gap: 2px; }
-.fi-yen { font-size: 8.5px; font-weight: 700; opacity: .75; }
 @media (prefers-reduced-motion: reduce) {
-  .fi-dot.bad, .fi-dot.wait { animation: none; }
-  .fi-dot.bad { opacity: 1; box-shadow: 0 0 0 2px rgba(255,69,58,.45); }
+  .fi-dot.bad { animation: none; opacity: 1; box-shadow: 0 0 0 2px rgba(255,69,58,.45); }
 }
 </style>
 <script>
@@ -3959,164 +3954,356 @@ body.floats-hidden #creditFloat { display: none !important; }
   if (!bStatus || !bPrice) return;
   SF.setAttribute('data-info', '1');
 
-  /* ---------- 1. 价格表：直接读 APP 内置的「模型与价格」离线快照 ---------- */
-  var PRICE = {}, PRICE_LIST = [];
-  try {
-    var enc = document.getElementById('modelPricesDocument');
-    if (enc) {
-      var bytes = Uint8Array.from(atob(enc.textContent.trim()), function (c) { return c.charCodeAt(0); });
-      var doc = new TextDecoder().decode(bytes);
-      var sm = doc.match(/<script id="snapshot"[^>]*>([\s\S]*?)<\/script>/);
-      if (sm) {
-        var snap = JSON.parse(sm[1]);
-        (snap.models || []).forEach(function (x) {
-          if (!x || !x.id) return;
-          PRICE[String(x.id).toLowerCase().trim()] = x;
-          PRICE_LIST.push(x);
-        });
-      }
-    }
-  } catch (e) {}
+  /* 弹窗里那两个页面的地址（直接沿用 APP 自己的常量，不另建数据源） */
+  var STATUS_URL = 'https://magenta-stardust-857688.netlify.app/';
+  var PUBLIC_API = 'https://api.image2pro.top/api-console/public-models';
 
-  function priceOf(model) {
-    if (!model) return null;
-    var k = String(model).toLowerCase().trim();
-    var x = PRICE[k];
-    if (!x) {                                   // 宽松匹配：用户 API 的模型名常带前缀/后缀
-      for (var i = 0; i < PRICE_LIST.length; i++) {
-        var id = String(PRICE_LIST[i].id).toLowerCase();
-        if (k.indexOf(id) !== -1 || id.indexOf(k) !== -1) { x = PRICE_LIST[i]; break; }
-      }
-    }
-    if (!x) return null;
-    var v;
-    if (x.type === 'image')      v = (x.textToImagePrice != null ? x.textToImagePrice : x.imagePrice);
-    else if (x.type === 'video') v = x.videoPrice;
-    else                         v = (x.textPricePer100 != null ? x.textPricePer100 : x.textPricePerRequest);
-    if (v == null || !isFinite(Number(v))) return null;
-    var n = Number(v);
-    if (n === 0) return { main: '免费', unit: '' };
-    var unit = x.type === 'image' ? '分/张' : (x.type === 'video' ? '分/视频' : '分/次');
-    var num = n.toLocaleString('zh-CN', { maximumFractionDigits: 2 });
-    return { main: num, unit: unit };
+  var DB = {};                 // 规范化后的模型表：id/name -> {price,status,rank}
+  var lastFetch = 0, htmlDone = false, busy = false;
+  var dotKind = 'idle', dotLabel = '见弹窗', lastKey = '';
+
+  function norm(x) { return String(x == null ? '' : x).toLowerCase().trim(); }
+  function isNum(v) { var n = Number(v); return (v !== '' && v != null && isFinite(n)) ? n : null; }
+  function shortName(s) {
+    if (!s) return '未选择';
+    s = String(s);
+    return s.length > 24 ? s.slice(0, 23) + '\u2026' : s;
   }
 
-  /* ---------- 2. 当前面板 → 对应模型 ---------- */
+  /* ---------- 1. 从一条模型记录里读出「状态」 ---------- */
+  var BAD_WORDS = /异常|停用|停服|不可用|故障|超时|失败|下线|offline|down|error|fail|abnormal|disabled|unavailable|inactive|deprecated/i;
+  var OK_WORDS  = /正常|可用|健康|online|healthy|available|active|normal|ready|running|success|^ok$|enable/i;
+  var ST_KEYS = ['status','state','health','availability','serviceStatus','modelStatus','runStatus',
+                 'healthStatus','apiStatus','statusText','statusLabel','statusName','online','available',
+                 'enabled','isNormal','isAvailable','usable','active'];
+  function statusFrom(o) {
+    if (!o || typeof o !== 'object') return 'unknown';
+    var v;
+    for (var i = 0; i < ST_KEYS.length; i++) {
+      if (o[ST_KEYS[i]] !== undefined && o[ST_KEYS[i]] !== null) { v = o[ST_KEYS[i]]; break; }
+    }
+    if (v === undefined) {                        // 嵌套对象 / 统计字段
+      for (var k in o) {
+        if (!Object.prototype.hasOwnProperty.call(o, k)) continue;
+        var val = o[k];
+        if (val && typeof val === 'object') {
+          var inner = val.status || val.state || val.label || val.text || val.code || val.result;
+          if (inner !== undefined && inner !== null) { v = inner; break; }
+          var failN = isNum(val.failed != null ? val.failed : (val.fail != null ? val.fail : (val.failCount != null ? val.failCount : val.errors)));
+          var okN   = isNum(val.success != null ? val.success : (val.ok != null ? val.ok : (val.successCount != null ? val.successCount : val.passed)));
+          if (failN != null && okN != null && failN > okN) return 'bad';
+          if (Array.isArray(val) && val.length) {   // 最近若干次调用：失败过半判异常
+            var bad = 0, ok = 0;
+            for (var q = 0; q < val.length; q++) {
+              var it = val[q];
+              var s2 = (it && typeof it === 'object') ? JSON.stringify(it) : String(it);
+              if (it === false || BAD_WORDS.test(s2) || /false|fail|error|异常|失败|超时/i.test(s2)) bad++;
+              else if (it === true || OK_WORDS.test(s2)) ok++;
+            }
+            if (bad > ok && bad > 0) return 'bad';
+          }
+        }
+      }
+    }
+    if (v === undefined) {
+      var fr = o.failureRate != null ? o.failureRate : (o.failRate != null ? o.failRate : o.errorRate);
+      if (isNum(fr) != null && Number(fr) > 0.5) return 'bad';
+      return 'unknown';
+    }
+    var sv = (v && typeof v === 'object') ? JSON.stringify(v) : String(v);
+    if (v === false || BAD_WORDS.test(sv)) return 'bad';
+    if (v === true || OK_WORDS.test(sv)) return 'ok';
+    return 'unknown';                            // 「暂无样本」等不确定状态：不谎报正常
+  }
+
+  /* ---------- 2. 从一条模型记录里读出「价格」 ---------- */
+  var P_KEYS = ['textToImagePrice','imagePrice','imageToImagePrice','videoPrice',
+                'textPricePerRequest','textPricePer100','price','callPrice','cost',
+                'credits','points','billing','billingPrice','fee'];
+  function priceFrom(o) {
+    if (!o || typeof o !== 'object') return null;
+    var v = null;
+    for (var i = 0; i < P_KEYS.length; i++) {
+      if (isNum(o[P_KEYS[i]]) != null) { v = isNum(o[P_KEYS[i]]); break; }
+    }
+    if (v === null) {                            // 字段名没见过就扫一遍
+      for (var k in o) {
+        if (!Object.prototype.hasOwnProperty.call(o, k)) continue;
+        if (/price|cost|credit|point|fee|billing/i.test(k) && isNum(o[k]) != null) { v = isNum(o[k]); break; }
+      }
+    }
+    if (v === null) return null;
+    if (v === 0) return { main: '免费', unit: '' };
+    var type = String(o.type || o.modelType || '').toLowerCase();
+    var unit = /video/.test(type) ? '分/视频' : (/image|draw|picture/.test(type) ? '分/张' : '分/次');
+    return { main: v.toLocaleString('zh-CN', { maximumFractionDigits: 2 }), unit: unit };
+  }
+
+  /* ---------- 3. 汇总：弹窗表格 > 实时接口 > 内置快照（只补价格，不改状态） ---------- */
+  function addRec(o, rank) {
+    if (!o || typeof o !== 'object') return;
+    var id = o.id || o.model || o.model_id || o.modelId || o.model_name || o.name || '';
+    var name = o.name || o.model_name || id;
+    if (!id) return;
+    var key = norm(id);
+    var rec = DB[key];
+    if (!rec) { rec = DB[key] = { id: String(id), name: String(name || id), price: null, status: 'unknown', rank: 0 }; }
+    var p = priceFrom(o);
+    if (rank >= rec.rank) {
+      rec.rank = rank;
+      if (name) rec.name = String(name);
+      if (o.price && typeof o.price === 'object') rec.price = o.price;   // 弹窗表格直接给的显示文本
+      else if (p) rec.price = p;
+      var st = statusFrom(o); if (st !== 'unknown') rec.status = st;
+    } else if (!rec.price) {
+      if (o.price && typeof o.price === 'object') rec.price = o.price;
+      else if (p) rec.price = p;
+    }
+    if (name) DB[norm(name)] = rec;
+  }
+  function toArray(any) {
+    if (Array.isArray(any)) return any;
+    if (!any || typeof any !== 'object') return null;
+    var a = any.models || any.data || any.list || any.result || any.items || any.rows || any.records;
+    if (Array.isArray(a)) return a;
+    if (a && typeof a === 'object') {
+      var b = a.models || a.list || a.items || a.rows || a.records;
+      if (Array.isArray(b)) return b;
+    }
+    return null;
+  }
+  function ingest(any, rank) {
+    var arr = toArray(any);
+    if (!arr) return 0;
+    var n = 0;
+    for (var i = 0; i < arr.length; i++) {
+      if (typeof arr[i] === 'string') addRec({ id: arr[i], name: arr[i] }, rank);
+      else addRec(arr[i], rank);
+      n++;
+    }
+    return n;
+  }
+  function lookup(model) {
+    var k = norm(model);
+    if (!k) return null;
+    if (DB[k]) return DB[k];
+    var keys = Object.keys(DB);
+    for (var i = 0; i < keys.length; i++) {
+      var id = norm(keys[i]);
+      if (id && (k.indexOf(id) !== -1 || id.indexOf(k) !== -1)) return DB[keys[i]];
+    }
+    return null;
+  }
+
+  /* ---------- 4. 弹窗 iframe 里已经渲染好的那一行（最贴近「所见即所得」） ---------- */
+  function rowRecord(tr, allowStatus) {
+    var cells = [].map.call(tr.querySelectorAll('th,td'), function (c) { return (c.textContent || '').trim(); });
+    if (!cells.length) return null;
+    var name = cells[0];
+    if (!name || /^(模型|类型|计费规则|模型与简介|调用价格|状态)/.test(name)) return null;
+    var text = cells.join(' ');
+    var badge = tr.querySelector('[class*="status"],[class*="badge"],[class*="tag"],[class*="label"],[class*="dot"]');
+    var stText = badge ? (badge.textContent || '') : text;
+    var st = !allowStatus ? 'unknown'
+           : (BAD_WORDS.test(stText) ? 'bad' : (OK_WORDS.test(stText) ? 'ok' : 'unknown'));
+    var price = null;
+    for (var i = 1; i < cells.length; i++) {
+      var c = cells[i];
+      if (c && /\d/.test(c) && /分|积分|张|次|视频|字|¥|免费|未公布|price/i.test(c)) {
+        price = { main: c.length > 14 ? c.slice(0, 13) + '\u2026' : c, unit: '' };
+        break;
+      }
+    }
+    return { id: name, name: name, status: st, price: price, _ui: 1 };
+  }
+  function readFrame() {
+    var n = 0;
+    [['statusFrame', 3, true], ['pricesFrame', 2, false], ['floatMirror', 3, true]].forEach(function (cfg) {
+      try {
+        var f = document.getElementById(cfg[0]);
+        var d = f && f.contentDocument;
+        if (!d) return;
+        var rows = [].map.call(d.querySelectorAll('tr'), function (tr) { return rowRecord(tr, cfg[2]); }).filter(Boolean);
+        rows.forEach(function (r) { addRec(r, cfg[1]); });
+        n += rows.length;
+      } catch (e) { /* 跨域读不到是预期情况 */ }
+    });
+    return n;
+  }
+
+  /* ---------- 5. 实时数据：弹窗页面自身 + 它调用的公开接口 ---------- */
+  function grab(url, asJson) {
+    var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    var timer = setTimeout(function () { if (ctl) ctl.abort(); }, 8000);
+    var opts = { cache: 'no-store' };
+    if (ctl) opts.signal = ctl.signal;
+    return fetch(url, opts).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return asJson ? r.json() : r.text();
+    }).then(function (x) { clearTimeout(timer); return x; }, function (e) { clearTimeout(timer); throw e; });
+  }
+  function snapshot() {
+    try {
+      var enc = document.getElementById('modelPricesDocument');
+      if (!enc) return [];
+      var bytes = Uint8Array.from(atob(enc.textContent.trim()), function (c) { return c.charCodeAt(0); });
+      var doc = new DOMParser().parseFromString(new TextDecoder().decode(bytes), 'text/html');
+      var sc = doc.querySelector('#snapshot');
+      return sc ? (JSON.parse(sc.textContent).models || []) : [];
+    } catch (e) { return []; }
+  }
+  var extraUrls = [], extraScripts = [];
+  function collectUrls(t) {
+    (t.match(/https:\/\/[^\s"'`)]+/g) || []).forEach(function (u) {
+      u = u.replace(/[,';)]+$/, '');
+      if (/api|models|status|price/i.test(u) && extraUrls.indexOf(u) === -1 && extraUrls.length < 6) extraUrls.push(u);
+    });
+    (t.match(/["'`](\/api\/[^\s"'`)]+)["'`]/g) || []).forEach(function (m) {
+      var u = STATUS_URL.replace(/\/$/, '') + m.slice(1, -1);
+      if (extraUrls.indexOf(u) === -1 && extraUrls.length < 6) extraUrls.push(u);
+    });
+  }
+  function endpointsFromHtml(html) {
+    try {
+      var doc = new DOMParser().parseFromString(html, 'text/html');
+      [].forEach.call(doc.querySelectorAll('script[type="application/json"],script[type="application/ld+json"]'), function (sc) {
+        try { ingest(JSON.parse(sc.textContent), 2); } catch (e) {}
+      });
+      [].forEach.call(doc.querySelectorAll('script'), function (sc) {
+        var t = sc.textContent || '';
+        (t.match(/=\s*(\{[\s\S]{40,}?\})\s*;/g) || []).forEach(function (m) {
+          var raw = m.slice(m.indexOf('{'), m.lastIndexOf('}') + 1);
+          if (/"models?"\s*:|"status"\s*:/.test(raw)) { try { ingest(JSON.parse(raw), 2); } catch (e) {} }
+        });
+        collectUrls(t);
+      });
+      [].forEach.call(doc.querySelectorAll('script[src],link[rel="modulepreload"]'), function (el) {
+        var u = el.getAttribute('src') || el.getAttribute('href');
+        if (!u) return;
+        try {
+          var full = new URL(u, STATUS_URL).href;
+          if (extraScripts.indexOf(full) === -1 && extraScripts.length < 3) extraScripts.push(full);
+        } catch (e) {}
+      });
+    } catch (e) {}
+    return html;
+  }
+
+  /* 把状态页放进同源 srcdoc 副本，直接读它渲染出来的每一行（与弹窗所见完全一致） */
+  function mirrorFrame(html) {
+    try {
+      if (document.getElementById('floatMirror')) return;
+      var f = document.createElement('iframe');
+      f.id = 'floatMirror';
+      f.setAttribute('aria-hidden', 'true');
+      f.style.cssText = 'position:fixed;width:0;height:0;border:0;opacity:0;pointer-events:none;';
+      var base = '<base href="' + STATUS_URL + '">';
+      f.srcdoc = /<head[^>]*>/i.test(html)
+        ? html.replace(/<head[^>]*>/i, function (m) { return m + base; })
+        : base + html;
+      document.body.appendChild(f);
+      var tries = 0;
+      var poll = setInterval(function () {
+        try {
+          var d = f.contentDocument;
+          if (d) {
+            var rows = [].map.call(d.querySelectorAll('tr'), function (tr) { return rowRecord(tr, true); }).filter(Boolean);
+            if (rows.length) { rows.forEach(function (r) { addRec(r, 3); }); render(); }
+          }
+        } catch (e) {}
+        if (++tries > 12) clearInterval(poll);
+      }, 1000);
+    } catch (e) {}
+  }
+
+  function refreshData(force) {
+    var now = Date.now();
+    if (busy || (!force && now - lastFetch < 30000)) return;
+    busy = true; lastFetch = now;
+    readFrame();
+    var htmlP = htmlDone ? Promise.resolve(null) : grab(STATUS_URL, false).catch(function () { return null; });
+    htmlP.then(function (html) {
+      if (html) { htmlDone = true; endpointsFromHtml(html); mirrorFrame(html); }
+      return Promise.all(extraScripts.map(function (u) { return grab(u, false).catch(function () { return ''; }); }));
+    }).then(function (jsArr) {
+      jsArr.forEach(collectUrls);              // 从状态页自己的 JS 里找出它调用的真实接口
+      var urls = [PUBLIC_API].concat(extraUrls);
+      return Promise.all(urls.map(function (u) { return grab(u, true).catch(function () { return null; }); }));
+    }).then(function (arrs) {
+      arrs.forEach(function (a) { if (a) ingest(a, 2); });
+      ingest(snapshot(), 1);                    // 只补价格兜底，不覆盖已判定的状态
+      readFrame();
+      busy = false;
+      render();
+    }, function () { busy = false; ingest(snapshot(), 1); render(); });
+  }
+  function refreshFrameSoon() { setTimeout(function () { readFrame(); render(); }, 700); }
+
+  /* ---------- 6. 当前面板 → 对应模型（绘图 / 反推各一套） ---------- */
   function currentCtx() {
-    var view = 'generate', model = '', base = '';
+    var view = 'generate', model = '';
     try { if (typeof currentView !== 'undefined') view = currentView; } catch (e) {}
-    try { if (typeof cfg !== 'undefined') base = cfg.baseUrl || ''; } catch (e) {}
     try {
       model = (view === 'prompts')
         ? (typeof visionModel === 'function' ? visionModel() : '')
         : (typeof genModel === 'function' ? genModel() : '');
     } catch (e) {}
     return {
-      view: view, model: model || '', base: base,
-      isVision: view === 'prompts',
+      view: view, model: model || '',
       role: view === 'prompts' ? '反推模型' : '绘图模型',
       priceRole: view === 'prompts' ? '反推价' : '绘图价'
     };
   }
-  function shortName(s) {
-    if (!s) return '未选择';
-    s = String(s);
-    return s.length > 24 ? s.slice(0, 23) + '…' : s;   // 具体宽度交给 CSS ellipsis
-  }
 
-  /* ---------- 3. 状态探测：拿当前接口 /models 验证，并检查所选模型是否在列 ---------- */
-  var netCache = { base: '', ts: 0, ok: false, ids: [] };
-  function setState(kind, label) {
-    dotKind = kind; dotLabel = label; render();
-  }
-  function probe(ctx, key, force) {
-    // 按「当前面板所选模型」判断状态：接口要通 + 该模型要在可用列表里
-    function apply() {
-      if (!ctx.base || !ctx.model) { setState('bad', '未配置'); return; }
-      if (!netCache.ok) { setState('bad', '异常'); return; }
-      var listed = netCache.ids.indexOf(String(ctx.model).toLowerCase()) !== -1;
-      setState(listed ? 'ok' : 'bad', listed ? '正常' : '模型异常');
-    }
-    var now = Date.now();
-    // 同一接口 60 秒内复用探测结果，切面板/换模型只重算、不重复打接口
-    if (!force && netCache.ts && netCache.base === ctx.base && now - netCache.ts < 60000) {
-      apply(); return;
-    }
-    if (!ctx.base || !ctx.model) { apply(); return; }
-    setState('wait', '检测中');
-    var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-    var timer = setTimeout(function () { if (ctl) ctl.abort(); }, 8000);
-    var url = ctx.base.replace(/\/+$/, '') + '/models';
-    var opts = { headers: {} };
-    try { opts.headers = (typeof authHeaders === 'function') ? authHeaders() : {}; } catch (e) {}
-    if (ctl) opts.signal = ctl.signal;
-
-    function finish(ok, ids) {
-      clearTimeout(timer);
-      netCache = { base: ctx.base, ts: Date.now(), ok: ok, ids: ids || [] };
-      apply();
-    }
-    fetch(url, opts).then(function (r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.text();
-    }).then(function (txt) {
-      var j, arr = [];
-      try { j = JSON.parse(txt); } catch (e) { j = null; }
-      if (Array.isArray(j)) arr = j;
-      else if (j) arr = j.data || j.models || j.result || j.list || [];
-      if (!Array.isArray(arr)) arr = [];
-      var ids = arr.map(function (o) {
-        return typeof o === 'string' ? o : (o && (o.id || o.name || o.model || o.model_name) || '');
-      }).filter(Boolean).map(function (s) { return String(s).toLowerCase(); });
-      finish(true, ids);
-    }).catch(function () {
-      finish(false, []);
-    });
-  }
-
-  /* ---------- 4. 渲染（只在数据变化时重建，避免打断红点闪烁动画） ---------- */
-  var dotKind = 'wait', dotLabel = '检测中', lastModel = '', lastRole = '', lastPrice = '';
+  /* ---------- 7. 渲染：上面状态 / 下面价格，绝不谎报正常、价格不再显示缺价文案 ---------- */
   function render() {
     var ctx = currentCtx();
-    var p = priceOf(ctx.model);
+    var rec = lookup(ctx.model);
+    var st = rec ? rec.status : 'unknown';
+    dotKind = st === 'ok' ? 'ok' : (st === 'bad' ? 'bad' : 'idle');
+    dotLabel = st === 'ok' ? '正常' : (st === 'bad' ? '异常' : '见弹窗');
     var sub = shortName(ctx.model);
-    var stColor = dotKind === 'bad' ? ' fi-bad' : '';
+    var stCls = st === 'bad' ? ' fi-bad' : (st === 'unknown' ? ' fi-idle' : '');
     bStatus.innerHTML =
       '<span class="fi-line"><span class="fi-dot ' + dotKind + '"></span>' +
-      '<span class="fi-main' + stColor + '">' + dotLabel + '</span></span>' +
+      '<span class="fi-main' + stCls + '">' + dotLabel + '</span></span>' +
       '<span class="fi-sub" title="' + sub.replace(/"/g, '') + '">' + sub + '</span>';
+    var p = rec && rec.price;
     bPrice.innerHTML = p
-      ? '<span class="fi-price-wrap"><span class="fi-main fi-price">' + p.main +
+      ? '<span class="fi-line"><span class="fi-main fi-price">' + p.main +
           (p.unit ? '<span class="fi-yen">' + p.unit + '</span>' : '') + '</span></span>' +
         '<span class="fi-sub">' + ctx.priceRole + '</span>'
-      : '<span class="fi-main">未收录</span><span class="fi-sub">' + ctx.priceRole + '</span>';
+      : '<span class="fi-line"><span class="fi-main fi-idle">—</span></span>' +
+        '<span class="fi-sub">' + ctx.priceRole + '</span>';
     bStatus.setAttribute('aria-label', '模型状态：' + dotLabel + '，' + ctx.role + ' ' + (ctx.model || '未选择') + '（点按查看详情）');
-    bPrice.setAttribute('aria-label', '当前' + ctx.role + (p ? '价格 ' + p.main + p.unit : '价格未收录') + '（点按查看价目表）');
+    bPrice.setAttribute('aria-label', '当前' + ctx.role + (p ? '价格 ' + p.main + (p.unit || '') : '价格见弹窗') + '（点按查看价目表）');
   }
-
-  /* ---------- 5. 实时同步：切面板 / 换模型 / 改接口 都立刻跟着变 ---------- */
-  var lastKey = '';
   function sync() {
     if (document.body.classList.contains('floats-hidden')) { lastKey = ''; return; }
     var ctx = currentCtx();
-    var key = ctx.view + '|' + ctx.model + '|' + ctx.base;
-    if (key === lastKey) return;
-    lastKey = key;
-    render();
-    probe(ctx, key, false);
+    var key = ctx.view + '|' + ctx.model;
+    if (key !== lastKey) { lastKey = key; render(); }
   }
-  sync();
-  setInterval(sync, 600);
-  document.addEventListener('visibilitychange', function () {
-    if (!document.hidden && lastKey) {
-      var ctx = currentCtx();
-      probe(ctx, lastKey, true);
-    }
+
+  /* ---------- 8. 实时同步触发点 ---------- */
+  document.addEventListener('click', function (e) {
+    if (e.target.closest && e.target.closest('[data-float-tab],[data-status-tab],#statusModal')) refreshFrameSoon();
   });
-  setInterval(function () {
-    if (!document.hidden && lastKey) probe(currentCtx(), lastKey, true);
-  }, 60000);
+  var frame = document.getElementById('statusFrame');
+  if (frame && window.MutationObserver) {
+    new MutationObserver(refreshFrameSoon).observe(frame, { attributes: true, attributeFilter: ['src', 'hidden'] });
+  }
+  window.addEventListener('message', function (e) {
+    try { if (e.data && (e.data.models || e.data.type === 'models' || e.data.type === 'status') && ingest(e.data, 2)) render(); } catch (er) {}
+  });
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) refreshData(true); });
+  window.addEventListener('online', function () { refreshData(true); });
+  setInterval(sync, 600);
+  setInterval(function () { if (!document.hidden) refreshData(true); }, 30000);
+  ingest(snapshot(), 1);
+  sync(); render(); refreshData(true);
 })();
 </script>
+
 </body>
 </html>
