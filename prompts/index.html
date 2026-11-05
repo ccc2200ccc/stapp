@@ -897,7 +897,7 @@ function showCount() {
     el = document.createElement('div');
     el.id = 'statBar';
     el.style.cssText = 'max-width:960px;margin:0 auto;padding:0 20px;color:rgba(255,255,255,.62);font-size:12px';
-    catScroll.parentNode.insertBefore(el, grid);
+    (grid.parentNode || document.body).insertBefore(el, grid);
   }
   el.textContent = state.all.length
     ? `共 ${state.all.length} 条提示词，当前显示 ${Math.min(state.view.length, state.page * CONFIG.PAGE_SIZE)} 条`
