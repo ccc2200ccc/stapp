@@ -1421,17 +1421,129 @@ document.addEventListener("DOMContentLoaded", function(){
     if (!g || g.querySelector('.prompt-card')) return;
     if (document.body.classList.contains('official-mode')) return;
     var tip = document.createElement('div');
-    tip.style.cssText = 'grid-column:1/-1;text-align:center;padding:26px 16px;color:#fff;font-size:13px;line-height:1.7;opacity:.85';
+    tip.style.cssText = 'grid-column:1/-1;text-align:center;padding:26px 16px;color:#6b6b70;font-size:13px;line-height:1.7;opacity:.9';
     tip.innerHTML = '卡片还没加载出来（数据文件可能还在路上）<br>';
     var b = document.createElement('button');
     b.textContent = '点此重新加载';
-    b.style.cssText = 'margin-top:12px;padding:9px 20px;border:0.5px solid rgba(255,255,255,.4);background:rgba(255,255,255,.14);color:#fff;border-radius:20px;font-size:13px;font-weight:600;cursor:pointer';
+    b.style.cssText = 'margin-top:12px;padding:9px 20px;border:0.5px solid rgba(20,28,45,.18);background:rgba(20,28,45,.05);color:#1c1c1e;border-radius:20px;font-size:13px;font-weight:600;cursor:pointer';
     b.onclick = function () { location.reload(); };
     tip.appendChild(b);
     g.appendChild(tip);
   }, 3500);
 })();
 </script>
+
+<style id="lightTheme">
+/* ==================================================================
+   卡片视图白色主题（纯样式覆盖，原有 DOM / JS 一行不动）
+   放在文档最后一个 style，全部带 !important，确保覆盖前面的暗色规则
+   ================================================================== */
+html, body {
+  background: #ffffff !important;
+  background-attachment: scroll !important;
+}
+body {
+  --text: #1c1c1e;
+  --text-dim: #6b6b70;
+  --rim: rgba(20,28,45,0.12);
+  --rim-soft: rgba(20,28,45,0.12);
+  --accent: #0e8f8f;                 /* 青色加深，白底可读 */
+}
+
+/* 卡片：靠阴影浮在白纸上 */
+.prompt-card {
+  background: #ffffff !important;
+  border: 1px solid rgba(20,28,45,0.09) !important;
+  box-shadow: 0 6px 20px rgba(20,28,45,0.09), 0 1px 3px rgba(20,28,45,0.05) !important;
+}
+.prompt-card::after { display: none !important; }   /* 去掉暗色主题的高光膜 */
+.prompt-card-img-wrap::after {
+  background: linear-gradient(to bottom, transparent 55%, rgba(0,0,0,0.28) 100%) !important;
+}
+.prompt-card-title { color: #1c1c1e !important; }
+.prompt-card-tag {
+  color: #4a4a52 !important;
+  background: rgba(20,28,45,0.055) !important;
+  border: 0.5px solid rgba(20,28,45,0.10) !important;
+}
+.source-tag {
+  color: #8a8a90 !important;
+  background: rgba(20,28,45,0.04) !important;
+  border: 0.5px solid rgba(20,28,45,0.08) !important;
+}
+
+/* 提示词文本区：浅灰底 + 深字 */
+.prompt-text-wrap {
+  background: #f4f6f8 !important;
+  border: 0.5px solid rgba(20,28,45,0.08) !important;
+}
+.prompt-text-label { color: #7a7a82 !important; }
+.prompt-display-text { color: #2b2b31 !important; }
+.use-prompt-btn, .copy-btn {
+  color: #3a3a40 !important;
+  background: #ffffff !important;
+  border: 0.5px solid rgba(20,28,45,0.14) !important;
+  box-shadow: 0 1px 3px rgba(20,28,45,0.05);
+}
+.use-prompt-btn {
+  color: #0b7a7a !important;
+  background: rgba(74,222,222,0.14) !important;
+  border-color: rgba(14,143,143,0.38) !important;
+}
+.use-prompt-btn:hover { background: rgba(74,222,222,0.24) !important; border-color: #0e8f8f !important; }
+.copy-btn:hover { background: #eceff3 !important; border-color: rgba(20,28,45,0.24) !important; box-shadow: none !important; }
+.copy-btn.copied { color: #1a7f37 !important; background: rgba(76,217,100,0.16) !important; border-color: rgba(76,217,100,0.55) !important; }
+.copy-btn.copied svg { stroke: #1a7f37 !important; }
+.prompt-card-actions { border-top: 0.5px solid rgba(20,28,45,0.07) !important; }
+.prompt-action-btn { color: #7a7a82 !important; }
+.prompt-action-btn:hover { color: #1c1c1e !important; background: rgba(20,28,45,0.05) !important; }
+.expand-btn { color: #0e8f8f !important; }
+.json-view pre { background: #eef1f4 !important; color: #2b2b31 !important; }
+#statBar { color: #7a7a82 !important; }   /* showCount 写的是 inline 白字，必须 !important */
+
+/* 顶部白条 / 搜索框 / 圆形按钮 / 风格胶囊 */
+.topbar-row {
+  border-color: rgba(20,28,45,0.10) !important;
+  box-shadow: 0 4px 16px rgba(20,28,45,0.10) !important;
+}
+.topbar .search-bar {
+  background: rgba(20,28,45,0.045) !important;
+  border-color: rgba(20,28,45,0.10) !important;
+}
+.topbar .view-switch button {
+  background: #ffffff !important;
+  border: 0.5px solid rgba(20,28,45,0.12) !important;
+  box-shadow: 0 2px 8px rgba(20,28,45,0.14) !important;
+  color: #48484a !important;
+}
+.topbar .view-switch button.active { background: #4adede !important; color: #fff !important; }
+.topbar .category-chip {
+  color: #3a3a40 !important;
+  background: rgba(255,255,255,0.82) !important;
+  border-color: rgba(20,28,45,0.12) !important;
+  box-shadow: 0 1px 4px rgba(20,28,45,0.06);
+}
+.topbar .category-chip.active { color: #07201f !important; }
+
+/* 其它 */
+.empty-state { color: #6b6b70 !important; }
+.empty-state svg { stroke: #6b6b70 !important; }
+.img-loading { background: linear-gradient(135deg, rgba(20,28,45,0.05), rgba(20,28,45,0.02)) !important; }
+.img-loading::after { border-color: rgba(20,28,45,0.14) !important; border-top-color: #0e8f8f !important; }
+.to-top-btn {
+  background: rgba(255,255,255,0.92) !important;
+  border: 0.5px solid rgba(20,28,45,0.14) !important;
+  color: #3a3a40 !important;
+  box-shadow: 0 3px 12px rgba(20,28,45,0.16);
+}
+#officialView { background: #ffffff !important; }
+
+/* 骰子弹窗：白底上保留深色玻璃卡片，白字才看得清 */
+#dicePanel {
+  background: linear-gradient(160deg, rgba(38,42,58,0.95), rgba(26,30,44,0.95)) !important;
+  border-color: rgba(255,255,255,0.22) !important;
+}
+</style>
 
 </body>
 </html>
