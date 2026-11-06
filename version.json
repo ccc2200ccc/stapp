@@ -1,5 +1,5 @@
 {
-  "version": "99.0.31",
+  "version": "99.0.32",
   "url": "https://ccc2200ccc.github.io/stapp/index.html",
-  "notes": "不绑卡版：停用 R2 原图层；保留词库渐进式加载、两段式自动同步、实时状态与价格"
+  "notes": "参考图修复：空 type/octet-stream 也能加、支持多张累加、生成后不清空、本地持久化"
 }
