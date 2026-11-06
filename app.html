@@ -4321,7 +4321,7 @@ body.floats-hidden #creditFloat { display: none !important; }
 
 <script>
 /* ============================================================
- * 账号 + 云端历史（加固版 v4 · 99.0.21 · 零配置）
+ * 账号 + 云端历史（加固版 v7 · 99.0.29 · 两段式同步）
  * 纯末尾替换整段 script 标签，不改动 APP 任何原有函数与 DOM
  *
  * 关键安全约束：
@@ -4347,6 +4347,7 @@ body.floats-hidden #creditFloat { display: none !important; }
   } catch (e) {}
 
   var lastFp = '', pushed = {}, shrinkFail = {}, suppress = false, busy = false;
+  var thumbBusy = false, thumbFail = {}, lastMeta = [];
   var syncedOnce = false, pulling = false, syncMsg = '', cloudCount = 0;
   var fab, mask;
 
@@ -4386,6 +4387,7 @@ body.floats-hidden #creditFloat { display: none !important; }
   /* ---------- 接口 ---------- */
   function logoutLocal() {
     token = ''; account = ''; syncedOnce = false; pushed = {}; lastFp = ''; syncMsg = '';
+    thumbFail = {}; lastMeta = []; cloudCount = 0;
     try {
       localStorage.removeItem(LS_TOKEN);
       localStorage.removeItem(LS_ACCOUNT);
@@ -4393,6 +4395,29 @@ body.floats-hidden #creditFloat { display: none !important; }
     updateFab(); renderState();
     try { window.dispatchEvent(new CustomEvent('ia-cloud-logout')); } catch (e) {}
   }
+  /* ---------- 同步专用通道（99.0.29） ----------
+     旧版所有历史接口都带 Authorization 自定义头，浏览器必然先发 OPTIONS 预检；
+     手机经 Netlify 200 代理时预检容易被拦，表现为「能上传、拉不到、一直同步失败」。
+     这里改成 text/plain 简单请求（CORS 不触发预检），token 放进 body 由后端校验。 */
+  async function syncPost(path, body) {
+    if (!BASE || !token) return { ok: false, msg: '未登录' };
+    var ctl = new AbortController();
+    var timer = setTimeout(function () { ctl.abort(); }, 25000);
+    try {
+      var r = await fetch(BASE + path, {
+        method: 'POST', mode: 'cors', cache: 'no-store',
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+        body: JSON.stringify(Object.assign({ token: token }, body || {})),
+        signal: ctl.signal
+      });
+      var j = await r.json().catch(function () { return null; });
+      if (r.status === 401) logoutLocal();
+      return j || { ok: false, msg: '响应异常 ' + r.status };
+    } catch (e) {
+      return { ok: false, msg: '网络较慢' };
+    } finally { clearTimeout(timer); }
+  }
+
   async function api(method, path, body) {
     if (!BASE || !token) return { ok: false, msg: '未登录' };
     var opt = { method: method, headers: { 'Authorization': 'Bearer ' + token } };
@@ -4415,12 +4440,12 @@ body.floats-hidden #creditFloat { display: none !important; }
     } finally { clearTimeout(timer); }
   }
 
-  /* ---------- 缩略图瘦身（99.0.27 重写） ----------
-     旧版只有一档 640px/0.72，结果超过 70000 字符就直接返回空字符串，
-     云端于是只存到文字；写实照片几乎必然超标，这就是「换设备只剩文字」的根因。
-     现在按 640→560→480→400→320→240→180 逐级降尺寸与质量，
-     直到塞得进 D1 单行上限，绝不返回空。外链/跨域失败时保留原链接兜底。 */
-  var THUMB_LIMIT = 65000;
+  /* ---------- 缩略图瘦身（99.0.29 提高清晰度） ----------
+     99.0.27 修好了「只剩文字」，但为了塞进 65000 字符会一路降到 180px，
+     跨设备看到的图就糊成一片。现在上限放宽到 140000 字符，
+     从 1024px/.82 起逐级降，最低 480px（不再出现 180px），且绝不返回空。
+     后端配合两段式同步：元数据与图片分开传，单张大图不会拖垮整次拉取。 */
+  var THUMB_LIMIT = 140000;
   function shrink(src) {
     return new Promise(function (resolve) {
       try {
@@ -4433,7 +4458,7 @@ body.floats-hidden #creditFloat { display: none !important; }
           try {
             var w = im.naturalWidth || im.width, h = im.naturalHeight || im.height;
             if (!w || !h) return resolve(fallback);
-            var plans = [[640, .72], [560, .64], [480, .56], [400, .5], [320, .44], [240, .38], [180, .34]];
+            var plans = [[1024, .82], [900, .76], [800, .70], [700, .64], [600, .58], [540, .54], [480, .50]];
             var c = document.createElement('canvas');
             var ctx = c.getContext('2d');
             var out = '';
@@ -4491,35 +4516,75 @@ body.floats-hidden #creditFloat { display: none !important; }
     } catch (e) {}
   }
 
-  /* ---------- 拉取云端：分页 + total 核对，失败绝不动任何数据 ---------- */
+  /* ---------- 两段式拉取（99.0.29，修好「电脑生图手机看不到」） ----------
+     旧版一次 GET 把 13 条记录的 base64 缩略图全打包回来（最坏 800KB+），
+     手机走 Netlify 200 代理 + 弱网时 15 秒必超时 → 一直显示「同步失败」；
+     而手机单条上传体积小，所以「手机生图能到电脑」但方向反过来就断。
+     现在第一步只拉元数据（不含图，通常几 KB），文字秒到、永不超时；
+     第二步按缺图的 rid 逐条拉图，一条失败不影响其它，可断点续传。
+     拉取失败一律不动两边数据，绝不把「本机为空」当成「用户清空」。 */
   async function pullFull() {
     if (pulling || !token || !BASE) return false;
     pulling = true;
     try {
-      var all = [], offset = 0, total = -1;
-      for (var page = 0; page < 12; page++) {
-        var r = await api('GET', '/api/history?limit=50&offset=' + offset);
-        if (!r || !r.ok) {
-          syncMsg = '同步失败（本机与云端均未改动，稍后自动重试）';
-          badge(syncMsg); renderState();
-          return false;
-        }
-        if (typeof r.total === 'number') total = r.total;
-        var items = r.items || [];
-        all = all.concat(items);
-        offset += items.length;
-        if (!items.length || (total >= 0 && all.length >= total)) break;
+      var r = await syncPost('/api/sync/pull', {});
+      if (!r || !r.ok) {
+        syncMsg = '待同步（网络较慢，自动重试，本机与云端均未改动）';
+        badge(syncMsg); renderState();
+        return false;
       }
+      var items = Array.isArray(r.items) ? r.items : [];
+      var total = typeof r.total === 'number' ? r.total : items.length;
       // 服务端说有数据却一条都没给 → 判定异常，不合并、不标记完成
-      if (total > 0 && all.length === 0) {
+      if (total > 0 && items.length === 0) {
         syncMsg = '同步异常（云端有 ' + total + ' 条但未取到，稍后重试）';
         badge(syncMsg); renderState();
         return false;
       }
-      merge(all, total);
+      lastMeta = items;
+      merge(items, total);
       syncedOnce = true; syncMsg = '';
+      setTimeout(function () { pullThumbs(); }, 30);   // 后台补图，不阻塞本次同步
       return true;
     } finally { pulling = false; }
+  }
+
+  /* 逐条补图：每轮最多 6 张，单张失败只冷却 60 秒，绝不拖垮整次同步 */
+  async function pullThumbs() {
+    if (thumbBusy || !token || !BASE || !hasHistory() || !lastMeta.length) return;
+    thumbBusy = true;
+    try {
+      var byId = {}, need = [];
+      try { history.forEach(function (h) { if (h && h.id) byId[h.id] = h; }); } catch (e) {}
+      for (var i = 0; i < lastMeta.length && need.length < 6; i++) {
+        var it = lastMeta[i];
+        if (!it || !it.rid || !it.hasThumb) continue;
+        var h = byId[it.rid];
+        if (!h) continue;
+        var has = (h.thumbs && h.thumbs[0]) || (h.images && h.images[0]);
+        if (has) continue;
+        if (thumbFail[it.rid] && Date.now() - thumbFail[it.rid] < 60000) continue;
+        need.push(it.rid);
+      }
+      if (!need.length) return;
+      var got = 0;
+      for (var k = 0; k < need.length; k++) {
+        var r = await syncPost('/api/sync/thumb', { rid: need[k] });
+        if (r && r.ok && r.thumb) {
+          var h2 = byId[need[k]];
+          if (h2) { h2.thumbs = [r.thumb]; h2.images = [r.thumb]; got++; }
+          delete thumbFail[need[k]];
+        } else {
+          thumbFail[need[k]] = Date.now();
+        }
+      }
+      if (got) {
+        try { if (typeof window.saveHistory === 'function') window.saveHistory(); } catch (e) {}
+        try { if (typeof window.renderHistory === 'function') window.renderHistory(); } catch (e) {}
+        try { if (typeof window.renderGenResult === 'function') window.renderGenResult(); } catch (e) {}
+        badge('☁ 补回 ' + got + ' 张图');
+      }
+    } finally { thumbBusy = false; }
   }
 
   /* 增量合并（99.0.27）：只增不删，且双向补图
@@ -4531,9 +4596,9 @@ body.floats-hidden #creditFloat { display: none !important; }
     try {
       cloudCount = total >= 0 ? total : items.length;
       if (!hasHistory()) return;
-      var byId = {}, cloudIds = {}, cloudThumb = {}, localById = {};
+      var byId = {}, cloudIds = {}, cloudHas = {}, localById = {};
       try { history.forEach(function (h) { if (h && h.id) { byId[h.id] = 1; localById[h.id] = h; } }); } catch (e) {}
-      items.forEach(function (it) { if (it && it.rid) { cloudIds[it.rid] = 1; cloudThumb[it.rid] = it.thumb || ''; } });
+      items.forEach(function (it) { if (it && it.rid) { cloudIds[it.rid] = 1; cloudHas[it.rid] = it.hasThumb ? 1 : 0; } });
       var added = 0, filled = 0;
       items.forEach(function (it) {
         if (!it || !it.rid || byId[it.rid]) return;
@@ -4566,7 +4631,7 @@ body.floats-hidden #creditFloat { display: none !important; }
         history.forEach(function (h) {
           if (!h || !h.id || !cloudIds[h.id]) return;
           var localT = (h.thumbs && h.thumbs[0]) || (h.images && h.images[0]) || '';
-          if (!cloudThumb[h.id] && localT && !shrinkFail[h.id]) return;
+          if (!cloudHas[h.id] && localT && !shrinkFail[h.id]) return;
           pushed[h.id] = 1;
         });
       } catch (e) {}
@@ -4594,7 +4659,7 @@ body.floats-hidden #creditFloat { display: none !important; }
       }
     } catch (e) { return 0; }
     if (!todo.length) return 0;
-    var res = await api('POST', '/api/history', { items: todo });
+    var res = await syncPost('/api/sync/push', { items: todo });
     if (res && res.ok) {
       todo.forEach(function (x) { pushed[x.id] = 1; });
       cloudCount = Math.max(cloudCount, Object.keys(pushed).length);
@@ -4762,7 +4827,7 @@ body.floats-hidden #creditFloat { display: none !important; }
       '  </div>',
 
       '  <div id="iaCloudConfirm" style="display:none;"></div>',
-      '  <p style="font-size:11px;line-height:1.75;color:#999;margin:16px 0 0;">密码加盐哈希后存于你自己的 Cloudflare 数据库；云端存提示词、模型、时间与 640px 缩略图，原图仍在本机。本机清空历史不会删除云端，云端清空也不会删除本机。</p>',
+      '  <p style="font-size:11px;line-height:1.75;color:#999;margin:16px 0 0;">密码加盐哈希后存于你自己的 Cloudflare 数据库；云端存提示词、模型、时间与最高 1024px 缩略图，原图仍在本机。本机清空历史不会删除云端，云端清空也不会删除本机。</p>',
       '</div>'
     ].join('');
     document.body.appendChild(mask);
@@ -4821,6 +4886,7 @@ body.floats-hidden #creditFloat { display: none !important; }
           localStorage.setItem(LS_ACCOUNT, account);
         } catch (e) {}
         pushed = {}; lastFp = ''; syncedOnce = false; syncMsg = ''; cloudCount = 0;
+        thumbFail = {}; lastMeta = [];
         renderState();
         toastMsg(isReg ? '注册成功，正在合并云端历史' : '登录成功，正在合并云端历史');
         await pullFull();

@@ -1,5 +1,5 @@
 {
-  "version": "99.0.28",
+  "version": "99.0.29",
   "url": "https://ccc2200ccc.github.io/stapp/index.html",
-  "notes": "词库「使用 / 骰子填入」改走 postMessage 桥接，手机 APP 内不再提示请在 APP 内使用；随机抽卡直接覆盖填入生图框"
+  "notes": "同步改两段式：先拉元数据再逐条补图，手机不再超时报同步失败；缩略图上限提到 1024px，跨设备图片不再糊"
 }
