@@ -1,5 +1,5 @@
 {
-  "version": "99.0.25",
+  "version": "99.0.26",
   "url": "https://ccc2200ccc.github.io/stapp/index.html",
-  "notes": "支持已建 Netlify 站点随机名，免改站点名；强制重新探测可达地址"
+  "notes": "内置新 Netlify 站点 precious-dango-5e35a8；探测自动跳过团队保护登录页"
 }

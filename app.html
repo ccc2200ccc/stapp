@@ -1047,11 +1047,12 @@ body.setting-open #creditFloat{opacity:0!important;transform:scale(.86)!importan
 </style>
 
 <script>
-/* 99.0.25 服务地址自适应：部分移动网络打不开 workers.dev 时，自动改走 Netlify 代理 */
+/* 99.0.26 服务地址自适应：部分移动网络打不开 workers.dev 时，自动改走 Netlify 代理 */
 (function () {
   'use strict';
   var OLD = 'https://tupian.ccc2200ccc.workers.dev';
   var CAND = [
+    'https://precious-dango-5e35a8.netlify.app',
     'https://inquisitive-rabanadas-77f2d8.netlify.app',
     'https://stapp-api.netlify.app',
     'https://stapp-api-2200.netlify.app',
@@ -1060,7 +1061,7 @@ body.setting-open #creditFloat{opacity:0!important;transform:scale(.86)!importan
   ];
   var raw = window.fetch ? window.fetch.bind(window) : null;
   if (!raw) return;
-  var KEY = 'ia_base_idx_v2', saved = -1;
+  var KEY = 'ia_base_idx_v3', saved = -1;
   try { saved = parseInt(localStorage.getItem(KEY), 10); } catch (e) {}
   if (!(saved >= 0 && saved < CAND.length)) saved = -1;
 
@@ -1068,7 +1069,18 @@ body.setting-open #creditFloat{opacity:0!important;transform:scale(.86)!importan
     var c = new AbortController();
     var t = setTimeout(function () { try { c.abort(); } catch (e) {} }, 4000);
     return raw(CAND[i] + '/ping', { cache: 'no-store', signal: c.signal })
-      .then(function (r) { clearTimeout(t); return r && r.ok ? i : -1; })
+      .then(function (r) {
+        clearTimeout(t);
+        if (!r || !r.ok) return -1;
+        /* 站点被 Netlify 团队保护 / 未发布时，/ping 仍可能回 200，
+           但内容是登录页或 404 HTML。只认真正的文本响应，避免误选保护页。 */
+        return r.text().then(function (txt) {
+          var s = String(txt || '');
+          if (!s) return -1;
+          if (/<html|<!doctype|Log in with|Netlify dashboard|No account yet|Sign up|Just a moment/i.test(s)) return -1;
+          return i;
+        }).catch(function () { return -1; });
+      })
       .catch(function () { clearTimeout(t); return -1; });
   }
   var ready = Promise.all(CAND.map(function (_, i) { return probe(i); }))
