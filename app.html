@@ -4266,7 +4266,8 @@ body.floats-hidden #creditFloat { display: none !important; }
 
   var BASE = '', token = '', account = '';
   try {
-    BASE = localStorage.getItem(LS_BASE) || DEFAULT_BASE;
+    try { if (localStorage.getItem(LS_BASE) && localStorage.getItem(LS_BASE) !== DEFAULT_BASE) localStorage.setItem(LS_BASE, DEFAULT_BASE); } catch (e) {}
+    BASE = DEFAULT_BASE;
     token = localStorage.getItem(LS_TOKEN) || '';
     account = localStorage.getItem(LS_ACCOUNT) || '';
   } catch (e) {}
@@ -4314,7 +4315,7 @@ body.floats-hidden #creditFloat { display: none !important; }
     if (!BASE || !token) return { ok: false, msg: '未登录' };
     var opt = { method: method, headers: { 'Authorization': 'Bearer ' + token } };
     if (body) {
-      opt.headers['Content-Type'] = 'application/json';
+      opt.headers['Content-Type'] = 'text/plain;charset=UTF-8';
       opt.body = JSON.stringify(body);
     }
     var ctl = new AbortController();
@@ -4680,7 +4681,8 @@ body.floats-hidden #creditFloat { display: none !important; }
         var tm = setTimeout(function () { ctl.abort(); }, 15000);
         var r = await fetch(BASE + (isReg ? '/api/register' : '/api/login'), {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          mode: 'cors', cache: 'no-store',
+          headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
           body: JSON.stringify({ username: u, password: p }),
           signal: ctl.signal
         });
@@ -4890,7 +4892,9 @@ body.floats-hidden #creditFloat { display: none !important; }
     }
   }
 
-  var BASE = safeBase(ls(LS_BASE)) || DEFAULT_BASE;
+  /* 服务地址已内置：清掉历史版本可能残留的自定义地址，避免连错服务器 */
+  try { if (ls(LS_BASE) && ls(LS_BASE) !== DEFAULT_BASE) setls(LS_BASE, DEFAULT_BASE); } catch (e) {}
+  var BASE = DEFAULT_BASE;
   var TOKEN = ls(LS_TOKEN), ACCOUNT = ls(LS_ACCOUNT);
   var mode = 'in', oldOverflow = '';
 
@@ -5094,6 +5098,44 @@ body.floats-hidden #creditFloat { display: none !important; }
   function pwOk(p) { return /^[\x21-\x7e]{8,64}$/.test(String(p || '')); }
   function userOk(u) { return /^[a-z0-9]{3,20}$/.test(String(u || '')); }
 
+  /* ---------- 连接失败时自动诊断，直接把原因写在登录页 ---------- */
+  async function diag() {
+    var lines = [];
+    function put(t) {
+      var e = $('iaGateErr');
+      if (e) { e.textContent = t; e.style.display = 'block'; e.style.whiteSpace = 'pre-wrap'; }
+    }
+    async function probe(name, url, opt) {
+      try {
+        var c = new AbortController();
+        var t = setTimeout(function () { c.abort(); }, 8000);
+        var opt2 = Object.assign({ mode: 'cors', cache: 'no-store', signal: c.signal }, opt || {});
+        var r = await fetch(url, opt2);
+        var txt = await r.text().catch(function () { return ''; });
+        clearTimeout(t);
+        lines.push(name + ': HTTP ' + r.status + ' ' + txt.slice(0, 160));
+      } catch (e2) {
+        lines.push(name + ': 浏览器拦截 / 超时（CORS 或网络策略）');
+      }
+      put(lines.join('\n'));
+    }
+    await probe('GET /health', BASE + '/health');
+    await probe('POST /api/register', BASE + '/api/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+      body: JSON.stringify({ username: 'diag1', password: '12345678' })
+    });
+    var body = lines.join('\n');
+    if (/Request denied|policy_default_denied|main-policy/i.test(body)) {
+      lines.push('结论：Cloudflare 有一条名为 main-policy 的策略拒绝了请求。请在 Cloudflare 控制台放行该 Worker（含 OPTIONS 方法），前端改代码无效。');
+    } else if (/HTTP 200/.test(body) && /ok/.test(body)) {
+      lines.push('结论：服务器可达。若仍注册失败，把上面两行截图发我。');
+    } else {
+      lines.push('结论：服务器不可达或被跨域拦截。把上面两行截图发我。');
+    }
+    put(lines.join('\n'));
+  }
+
   async function submit() {
     var u = (($('iaGateUser').value || '').trim().toLowerCase());
     var p = $('iaGatePwd').value || '';
@@ -5113,13 +5155,14 @@ body.floats-hidden #creditFloat { display: none !important; }
     try {
       var r = await fetch(BASE + (isReg ? '/api/register' : '/api/login'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        mode: 'cors', cache: 'no-store',
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
         body: JSON.stringify({ username: u, password: p }),
         signal: ctl.signal
       });
       var j = await r.json().catch(function () { return null; });
       if (!r.ok || !j || !j.ok) {
-        showErr((j && j.msg) || (isReg ? '注册失败，请稍后再试' : '登录失败，用户名或密码不正确'));
+        showErr('服务器返回 ' + r.status + '：' + ((j && j.msg) || '未知错误'));
         return;
       }
       TOKEN = j.token; ACCOUNT = j.username || u;
@@ -5127,7 +5170,10 @@ body.floats-hidden #creditFloat { display: none !important; }
       fire('ia-cloud-auth');
       unlock(false);
     } catch (e) {
-      showErr('连接服务器失败，请检查网络后重试');
+      var why = (e && e.name === 'AbortError') ? '连接超时（15 秒）'
+        : ('请求被拦截：' + (e && e.message ? e.message : '浏览器阻止了跨域请求'));
+      showErr(why + '\n服务器：' + BASE + '\n正在自动诊断…');
+      diag();
     } finally {
       clearTimeout(tm);
       btn.textContent = old; btn.disabled = false;

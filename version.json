@@ -1,5 +1,5 @@
 {
-  "version": "99.0.21",
+  "version": "99.0.22",
   "url": "https://ccc2200ccc.github.io/stapp/index.html",
-  "notes": "全中文登录注册页；服务地址内置，普通用户无需填写任何配置；后端合并为一个 Worker"
+  "notes": "修复注册连接失败：请求改为无预检的 text/plain；失败时显示真实 HTTP 状态并自动诊断"
 }
