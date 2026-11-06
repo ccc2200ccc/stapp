@@ -1016,8 +1016,16 @@ function fallbackCopy(text, btn, originalHTML, done) {
 
 function usePrompt(text) {
   if (!text) { showToast('这条提示词加载失败'); return; }
-  if (typeof window.onPromptUse === 'function') window.onPromptUse(text);
-  else showToast('已加载完整提示词，请点「复制」按钮');
+  /* 父页注入优先（同源旧环境）；注入不到时走 postMessage，
+     srcdoc / sandbox / 跨源 / load 时机错位都不会再失效 */
+  if (typeof window.onPromptUse === 'function') { window.onPromptUse(text); return; }
+  try {
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ __stapp_fill: 1, text: String(text) }, '*');
+      return;
+    }
+  } catch (e) {}
+  showToast('已加载完整提示词，请点「复制」按钮');
 }
 
 function showToast(msg) {
@@ -1338,12 +1346,14 @@ document.addEventListener("DOMContentLoaded", function(){
   if(fillBtn) fillBtn.onclick = function(){
     var txt = window._lastDiceText || '';
     if(!txt){ toast('提示词还在加载，稍候再点'); return; }
-    if(typeof window.onPromptUse === 'function'){
-      window.onPromptUse(txt);
-      if(mask) mask.classList.remove('show');
-    } else {
-      toast('请在 APP 内使用「填入」');
+    if(typeof window.usePrompt === 'function') window.usePrompt(txt);
+    else if(typeof window.onPromptUse === 'function') window.onPromptUse(txt);
+    else {
+      try { window.parent.postMessage({ __stapp_fill: 1, text: String(txt) }, '*'); }
+      catch(e){ toast('填入失败，请点「复制」'); return; }
     }
+    if(mask) mask.classList.remove('show');
+    toast('已带入生图框');
   };
 });
 </script>
