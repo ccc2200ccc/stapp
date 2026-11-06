@@ -1314,7 +1314,7 @@ body.setting-open #creditFloat{opacity:0!important;transform:scale(.86)!importan
       <div id="plGrid" hidden></div>
 
       <iframe id="promptLibFrame"
-              src="https://ccc2200ccc.github.io/stapp/prompts/index.html?v=11"
+              src="https://ccc2200ccc.github.io/stapp/prompts/index.html?v=12"
               title="提示词库" allow="clipboard-write"
               style="flex:1 1 auto;display:block;width:100%;height:auto;min-height:0;border:0;background:transparent;border-radius:20px;"></iframe>
     </section>
@@ -5455,6 +5455,216 @@ body.floats-hidden #creditFloat { display: none !important; }
   boot();
 })();
 
+</script>
+
+<script>
+/* ============================================================
+ * 99.0.31 不绑卡版：R2 原图层整体停用（整段脚本不执行）
+ *  - 不建 R2、不绑 IMAGES、不换 Worker，零 /api/image 请求、零原图压缩
+ *  - 两段式同步、1024px 缩略图、词库加速、状态价格、登录门禁全部照常
+ *  - 以后想开原图：把下面 R2_ENABLED 改成 true，并部署 v8 Worker + 绑定 IMAGES
+ * ============================================================ */
+(function () {
+  'use strict';
+  var R2_ENABLED = false;   // 不绑卡：R2 未开通，原图层整体停用
+  if (!R2_ENABLED) return;  // 不注册任何定时器/监听器，不发任何原图请求
+  var BASE = 'https://tupian.ccc2200ccc.workers.dev';
+  var LS_TOKEN = 'ia_cloud_token_v1', LS_ACCOUNT = 'ia_cloud_account_v1';
+  var LS_UP = 'ia_orig_uploaded_v2';
+  var MAX_B64 = 5.6 * 1024 * 1024;     // base64 上限 ≈ 4.2MB 原始字节
+  var uploaded = {}, fail = {}, origMap = {}, busy = false, r2Off = false;
+  try { uploaded = JSON.parse(localStorage.getItem(LS_UP) || '{}') || {}; } catch (e) {}
+
+  function tok() { try { return localStorage.getItem(LS_TOKEN) || ''; } catch (e) { return ''; } }
+  function acct() { try { return localStorage.getItem(LS_ACCOUNT) || ''; } catch (e) { return ''; } }
+  function uk(id) { return acct() + ':' + String(id); }
+  function saveUp() { try { localStorage.setItem(LS_UP, JSON.stringify(uploaded)); } catch (e) {} }
+  function toast(m) { try { if (typeof window.toast === 'function') window.toast(m, 2600); } catch (e) {} }
+  function hasHist() { try { return (typeof history !== 'undefined') && Array.isArray(history); } catch (e) { return false; } }
+  function recImg(h) {
+    try { return (h.thumbs && h.thumbs[0]) || (h.images && h.images[0]) || h.thumb || h.img || h.url || h.src || ''; }
+    catch (e) { return ''; }
+  }
+  function post(path, obj) {
+    var ctl = new AbortController();
+    var tm = setTimeout(function () { try { ctl.abort(); } catch (e) {} }, 60000);
+    return fetch(BASE + path, {
+      method: 'POST', mode: 'cors', cache: 'no-store',
+      headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+      body: JSON.stringify(Object.assign({ token: tok() }, obj || {})),
+      signal: ctl.signal
+    }).then(function (r) { return r.json().catch(function () { return null; }); })
+      .catch(function () { return null; })
+      .then(function (j) { clearTimeout(tm); return j; });
+  }
+
+  /* 原图准备：小图原样上传；超大或外链用 canvas 降到 4096px / JPEG .94 */
+  function prepare(src) {
+    return new Promise(function (resolve) {
+      if (!src) return resolve(null);
+      src = String(src);
+      var m = /^data:([^;,]+);base64,([\s\S]*)$/.exec(src);
+      if (m && src.length <= MAX_B64) return resolve({ data: src, mime: m[1], exact: true });
+      var im = new Image();
+      try { im.crossOrigin = 'anonymous'; } catch (e) {}
+      im.onload = function () {
+        try {
+          var w = im.naturalWidth || im.width, h = im.naturalHeight || im.height;
+          if (!w || !h) return resolve(null);
+          var k = Math.min(1, 4096 / Math.max(w, h));
+          var c = document.createElement('canvas'), cx = c.getContext('2d');
+          c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
+          cx.fillStyle = '#ffffff'; cx.fillRect(0, 0, c.width, c.height);
+          cx.drawImage(im, 0, 0, c.width, c.height);
+          var out = c.toDataURL('image/jpeg', 0.94);
+          if (out.length > MAX_B64) out = c.toDataURL('image/jpeg', 0.82);
+          return resolve(out.length <= MAX_B64 ? { data: out, mime: 'image/jpeg', exact: false } : null);
+        } catch (e) { return resolve(null); }
+      };
+      im.onerror = function () { resolve(null); };
+      im.src = src;
+    });
+  }
+
+  /* 后台上传：每轮只传 1 张，和缩略图同步错开，绝不抢带宽 */
+  async function uploadQueue() {
+    if (busy || r2Off || !tok() || !hasHist()) return;
+    busy = true;
+    try {
+      var now = Date.now();
+      for (var i = 0; i < history.length; i++) {
+        var h = history[i];
+        if (!h || !h.id) continue;
+        var key = uk(h.id);
+        if (uploaded[key]) continue;
+        if (fail[key] && now - fail[key] < 300000) continue;
+        var src = recImg(h);
+        if (!src) continue;
+        var p = await prepare(src);
+        if (!p) { fail[key] = now; continue; }
+        var r = await post('/api/image/put', {
+          rid: String(h.id), data: p.data, mime: p.mime, exact: p.exact ? 1 : 0
+        });
+        if (r && r.ok) {
+          uploaded[key] = 1; saveUp();
+          origMap[String(h.id)] = { mime: r.mime, size: r.size };
+          paintBadges();
+        } else {
+          fail[key] = now;
+          if (r && r.r2 === false) { r2Off = true; break; }
+        }
+        break;   // 一轮一张，10 张约 40 秒后台完成
+      }
+    } finally { busy = false; }
+  }
+
+  async function refreshList() {
+    if (!tok()) return;
+    var r = await post('/api/image/list', {});
+    if (!r || !r.ok) { if (r && r.r2 === false) r2Off = true; return; }
+    r2Off = false;
+    origMap = {};
+    (r.items || []).forEach(function (x) { origMap[String(x.rid)] = { mime: x.mime, size: x.size }; });
+    paintBadges();
+  }
+
+  /* 给作品卡片注入「原图」角标；renderHistory 重绘后由观察者自动补上 */
+  function paintBadges() {
+    var g = document.getElementById('historyGrid');
+    if (!g) return;
+    Array.prototype.forEach.call(g.querySelectorAll('.hist-item'), function (el) {
+      var id = el.dataset.id;
+      if (!id) return;
+      var b = el.querySelector('.ia-orig-badge');
+      if (origMap[id]) {
+        if (!b) {
+          b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'ia-orig-badge';
+          b.textContent = '原图';
+          b.style.cssText = 'position:absolute;right:8px;top:8px;z-index:4;border:0;border-radius:999px;' +
+            'padding:4px 10px;font-size:10px;font-weight:700;letter-spacing:.3px;color:#fff;' +
+            'background:rgba(8,150,140,.88);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);' +
+            'box-shadow:0 2px 8px rgba(0,0,0,.22);cursor:pointer;';
+          if (getComputedStyle(el).position === 'static') el.style.position = 'relative';
+          el.appendChild(b);
+        }
+      } else if (b) { b.remove(); }
+    });
+  }
+  try {
+    var mo = new MutationObserver(function () { paintBadges(); });
+    var gridEl = document.getElementById('historyGrid');
+    if (gridEl) mo.observe(gridEl, { childList: true, subtree: false });
+  } catch (e) {}
+
+  function ext(mime) {
+    if (/png/i.test(mime)) return 'png';
+    if (/webp/i.test(mime)) return 'webp';
+    if (/gif/i.test(mime)) return 'gif';
+    return 'jpg';
+  }
+  function dataToBlob(d) {
+    var m = /^data:([^;,]+);base64,([\s\S]*)$/.exec(d);
+    if (!m) return null;
+    var bin = atob(m[2].replace(/\s/g, ''));
+    var u = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    return new Blob([u], { type: m[1] });
+  }
+
+  async function openOriginal(rid) {
+    toast('正在取原图…');
+    var r = await post('/api/image/get', { rid: String(rid) });
+    if (!r || !r.ok || !r.data) { toast(r && r.msg ? r.msg : '原图暂时取不到'); return; }
+    var blob = dataToBlob(r.data);
+    if (!blob) { toast('原图解析失败'); return; }
+    var url = URL.createObjectURL(blob);
+    var ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(12,16,20,.94);' +
+      'display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
+    var im = document.createElement('img');
+    im.src = url;
+    im.style.cssText = 'max-width:100%;max-height:76vh;object-fit:contain;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.5);';
+    var bar = document.createElement('div');
+    bar.style.cssText = 'display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;justify-content:center;';
+    var dl = document.createElement('a');
+    dl.href = url;
+    dl.download = 'stapp-' + String(rid).slice(0, 24) + '.' + ext(r.mime || blob.type);
+    dl.textContent = '下载原图（' + (r.size ? (r.size / 1048576).toFixed(1) + ' MB' : '原尺寸') + '）';
+    dl.style.cssText = 'padding:10px 20px;border-radius:999px;background:#0a968c;color:#fff;font-size:13px;font-weight:700;text-decoration:none;';
+    var cl = document.createElement('button');
+    cl.type = 'button'; cl.textContent = '关闭';
+    cl.style.cssText = 'padding:10px 20px;border-radius:999px;border:1px solid rgba(255,255,255,.35);background:transparent;color:#fff;font-size:13px;cursor:pointer;';
+    function shut() { try { URL.revokeObjectURL(url); } catch (e) {} try { ov.remove(); } catch (e) {} }
+    cl.onclick = shut;
+    ov.onclick = function (e) { if (e.target === ov) shut(); };
+    bar.appendChild(dl); bar.appendChild(cl);
+    ov.appendChild(im); ov.appendChild(bar);
+    document.body.appendChild(ov);
+  }
+
+  /* capture 阶段拦截角标点击，避免同时打开原有详情弹窗 */
+  document.addEventListener('click', function (e) {
+    var b = e.target && e.target.closest ? e.target.closest('.ia-orig-badge') : null;
+    if (!b) return;
+    var el = b.closest('.hist-item');
+    if (!el || !el.dataset.id) return;
+    e.stopPropagation(); e.preventDefault();
+    openOriginal(el.dataset.id);
+  }, true);
+
+  window.addEventListener('ia-cloud-auth', function () { r2Off = false; refreshList(); uploadQueue(); });
+  window.addEventListener('ia-cloud-logout', function () { origMap = {}; paintBadges(); });
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden && tok()) { refreshList(); uploadQueue(); }
+  });
+  window.addEventListener('online', function () { if (tok()) { refreshList(); uploadQueue(); } });
+
+  if (tok()) { refreshList(); setTimeout(uploadQueue, 3500); }
+  setInterval(function () { if (tok() && !document.hidden) uploadQueue(); }, 4000);
+  setInterval(function () { if (tok() && !document.hidden) refreshList(); }, 30000);
+})();
 </script>
 </body>
 </html>
