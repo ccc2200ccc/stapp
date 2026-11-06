@@ -1420,10 +1420,8 @@ body.setting-open #creditFloat{opacity:0!important;transform:scale(.86)!importan
 </div>
 
 
-<div class="float-beam" id="statusFloat" role="group" aria-label="模型信息，可拖动吸附屏幕边缘">
-  <button type="button" data-float-tab="status" aria-label="查看模型状态"><span class="float-beam-dot" aria-hidden="true"></span>状态</button>
-  <span class="float-beam-divider" aria-hidden="true"></span>
-  <button type="button" data-float-tab="prices" aria-label="查看模型与价格"><span aria-hidden="true">¥</span>价格</button>
+<div class="float-beam single" id="statusFloat" role="group" aria-label="模型状态与价格，可拖动吸附屏幕边缘">
+  <button type="button" data-float-tab="status" aria-label="查看模型状态与价格"><span class="float-beam-dot" aria-hidden="true"></span>状态</button>
 </div>
 
 <div class="float-beam credit-float single" id="creditFloat" role="group" aria-label="剩余积分，点按查看账目，可拖动吸附屏幕边缘">
@@ -1436,13 +1434,11 @@ body.setting-open #creditFloat{opacity:0!important;transform:scale(.86)!importan
   <div class="status-window">
     <div class="status-head">
       <div class="status-tabs" role="tablist" aria-label="模型信息">
-        <button id="statusTab" type="button" role="tab" aria-selected="true" aria-controls="statusFrame" data-status-tab="status">模型状态</button>
-        <button id="pricesTab" type="button" role="tab" aria-selected="false" aria-controls="pricesFrame" data-status-tab="prices">模型与价格</button>
+        <button id="statusTab" type="button" role="tab" aria-selected="true" aria-controls="statusFrame" data-status-tab="status">模型状态与价格</button>
       </div>
       <button class="v-icon-btn" id="statusClose" type="button" aria-label="关闭">✕</button>
     </div>
-    <iframe id="statusFrame" title="模型状态" loading="lazy"></iframe>
-    <iframe id="pricesFrame" title="模型与价格" loading="lazy" hidden></iframe>
+    <iframe id="statusFrame" title="模型状态与价格" loading="lazy"></iframe>
   </div>
 </div>
 
@@ -3464,33 +3460,15 @@ document.addEventListener('keydown', e => {
 
 
 const STATUS_URL = 'https://magenta-stardust-857688.netlify.app/';
-function selectStatusTab(tab) {
-  const prices = tab === 'prices';
+function selectStatusTab() {
   const statusFrame = $('#statusFrame');
-  const pricesFrame = $('#pricesFrame');
-  if (prices && !pricesFrame.hasAttribute('srcdoc')) {
-    const bytes = Uint8Array.from(atob($('#modelPricesDocument').textContent.trim()), char => char.charCodeAt(0));
-    pricesFrame.srcdoc = new TextDecoder().decode(bytes);
-  }
-  if (!prices && !statusFrame.hasAttribute('src')) statusFrame.src = STATUS_URL;
-  statusFrame.hidden = prices;
-  pricesFrame.hidden = !prices;
-  document.querySelectorAll('[data-status-tab]').forEach(button => {
-    const selected = button.dataset.statusTab === (prices ? 'prices' : 'status');
-    button.setAttribute('aria-selected', String(selected));
-    button.tabIndex = selected ? 0 : -1;
-  });
+  if (statusFrame && !statusFrame.hasAttribute('src')) statusFrame.src = STATUS_URL;
+  if (statusFrame) statusFrame.hidden = false;
+  const tab = $('#statusTab');
+  if (tab) { tab.setAttribute('aria-selected', 'true'); tab.tabIndex = 0; }
 }
 $('.status-tabs').addEventListener('click', event => {
-  const button = event.target.closest('[data-status-tab]');
-  if (button) selectStatusTab(button.dataset.statusTab);
-});
-$('.status-tabs').addEventListener('keydown', event => {
-  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-  event.preventDefault();
-  const prices = event.key === 'End' || (event.key !== 'Home' && $('#pricesTab').getAttribute('aria-selected') !== 'true');
-  selectStatusTab(prices ? 'prices' : 'status');
-  $(prices ? '#pricesTab' : '#statusTab').focus();
+  if (event.target.closest('[data-status-tab]')) selectStatusTab();
 });
 function setupFloat(floating, positionKey, defaultRatio, onActivate) {
   if (!floating) return;
@@ -3915,208 +3893,356 @@ body.floats-hidden #creditFloat { display: none !important; }
 })();
 </script>
 
-<!-- 悬浮球实时显示：上面=当前面板所选模型状态，下面=该模型价格（原有 DOM / JS 一行未改） -->
+
+
+<!-- 悬浮球：状态与价格 = 状态页同源数据（严格判定，绝不把上架状态当正常） -->
 <style id="floatInfo">
 #statusFloat[data-info="1"] button {
-  flex-direction: column;
-  gap: 1px;
-  font-size: 10.5px;
-  line-height: 1.15;
-  padding: 0 5px;
-  box-sizing: border-box;
+  flex-direction: column; gap: 1px; font-size: 10.5px; line-height: 1.15;
+  padding: 2px 6px; box-sizing: border-box;
 }
 .fi-line { display: flex; align-items: center; justify-content: center; gap: 4px; max-width: 100%; }
 .fi-dot { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; }
-.fi-dot.ok    { background: #34c759; box-shadow: 0 0 0 1px rgba(255,255,255,.65), 0 0 6px rgba(52,199,89,.75); }
-.fi-dot.bad   { background: #ff453a; animation: fiBlink .9s ease-in-out infinite; }
-.fi-dot.wait  { background: #ff9f0a; animation: fiPulse 1.2s ease-in-out infinite; }
+.fi-dot.ok   { background: #34c759; box-shadow: 0 0 0 1px rgba(255,255,255,.65), 0 0 6px rgba(52,199,89,.75); }
+.fi-dot.bad  { background: #ff453a; animation: fiBlink .9s ease-in-out infinite; }
+.fi-dot.warn { background: #f5a623; box-shadow: 0 0 0 1px rgba(255,255,255,.65); }
+.fi-dot.idle { background: #9aa4a0; box-shadow: 0 0 0 1px rgba(255,255,255,.65); }
 @keyframes fiBlink {
-  0%,100% { opacity: 1;   box-shadow: 0 0 0 1px rgba(255,255,255,.65), 0 0 0 0   rgba(255,69,58,.6); }
-  50%     { opacity: .3;  box-shadow: 0 0 0 1px rgba(255,255,255,.65), 0 0 0 6px rgba(255,69,58,0); }
+  0%,100% { opacity: 1;  box-shadow: 0 0 0 1px rgba(255,255,255,.65), 0 0 0 0   rgba(255,69,58,.6); }
+  50%     { opacity: .3; box-shadow: 0 0 0 1px rgba(255,255,255,.65), 0 0 0 6px rgba(255,69,58,0); }
 }
-@keyframes fiPulse { 0%,100% { opacity: 1 } 50% { opacity: .4 } }
 .fi-main { font-size: 10.5px; font-weight: 700; white-space: nowrap; color: #17211c; }
-.fi-main.fi-price { font-size: 11px; color: #0a6b6b; letter-spacing: -.2px; }
-.fi-main.fi-bad { color: #a52a22; }
+.fi-main.fi-bad  { color: #a52a22; }
+.fi-main.fi-warn { color: #8a5a00; }
+.fi-main.fi-idle { color: #5d6863; }
 .fi-sub {
-  display: block; max-width: 58px; overflow: hidden; text-overflow: ellipsis;
+  display: block; max-width: 86px; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; font-size: 7.5px; font-weight: 500; line-height: 1.2;
   opacity: .6; color: #17211c; letter-spacing: 0;
 }
-.fi-price-wrap { display: flex; align-items: center; justify-content: center; gap: 2px; }
-.fi-yen { font-size: 8.5px; font-weight: 700; opacity: .75; }
+.fi-price-line {
+  display: block; white-space: nowrap; font-size: 9px; font-weight: 700;
+  line-height: 1.25; color: #0a6b6b; max-width: 92px; overflow: hidden; text-overflow: ellipsis;
+}
+.fi-price-line.fi-none { color: #5d6863; opacity: .7; }
 @media (prefers-reduced-motion: reduce) {
-  .fi-dot.bad, .fi-dot.wait { animation: none; }
-  .fi-dot.bad { opacity: 1; box-shadow: 0 0 0 2px rgba(255,69,58,.45); }
+  .fi-dot.bad { animation: none; opacity: 1; box-shadow: 0 0 0 2px rgba(255,69,58,.45); }
 }
 </style>
 <script>
+/* 悬浮球 = 状态弹窗里「当前所选模型那一行」的缩略版。
+   关键修正：
+   1) status:active / statusLabel:可用 / available:true 属于「是否上架」，一律不算服务正常；
+      旧版把布尔 true 转成「已收到结果」，导致①福利 Deepseek 被误判成正常。
+   2) ①②福利名字只差一个圈，绝不弱匹配串台。
+   3) 接口里出现明确「服务异常」时立刻覆盖；接口给不出明确状态时，
+      回退到状态页同源基线（用户点进去看到的那份），绝不假绿。 */
 (function () {
   var SF = document.getElementById('statusFloat');
   if (!SF) return;
-  var bStatus = SF.querySelector('[data-float-tab="status"]');
-  var bPrice  = SF.querySelector('[data-float-tab="prices"]');
-  if (!bStatus || !bPrice) return;
+  var B = SF.querySelector('[data-float-tab="status"]');
+  if (!B) return;
   SF.setAttribute('data-info', '1');
 
-  /* ---------- 1. 价格表：直接读 APP 内置的「模型与价格」离线快照 ---------- */
-  var PRICE = {}, PRICE_LIST = [];
-  try {
-    var enc = document.getElementById('modelPricesDocument');
-    if (enc) {
-      var bytes = Uint8Array.from(atob(enc.textContent.trim()), function (c) { return c.charCodeAt(0); });
-      var doc = new TextDecoder().decode(bytes);
-      var sm = doc.match(/<script id="snapshot"[^>]*>([\s\S]*?)<\/script>/);
-      if (sm) {
-        var snap = JSON.parse(sm[1]);
-        (snap.models || []).forEach(function (x) {
-          if (!x || !x.id) return;
-          PRICE[String(x.id).toLowerCase().trim()] = x;
-          PRICE_LIST.push(x);
-        });
-      }
-    }
-  } catch (e) {}
+  var API = 'https://tupian.ccc2200ccc.workers.dev/';
+  var DIRECT = 'https://api.image2pro.top/api-console/public-health';
 
-  function priceOf(model) {
-    if (!model) return null;
-    var k = String(model).toLowerCase().trim();
-    var x = PRICE[k];
-    if (!x) {                                   // 宽松匹配：用户 API 的模型名常带前缀/后缀
-      for (var i = 0; i < PRICE_LIST.length; i++) {
-        var id = String(PRICE_LIST[i].id).toLowerCase();
-        if (k.indexOf(id) !== -1 || id.indexOf(k) !== -1) { x = PRICE_LIST[i]; break; }
-      }
+  var DB = {}, IDX = {}, SNAP = {};
+  var busy = false, failed = false, lastFetch = 0;
+
+  /* ---------- 名字归一 ---------- */
+  var EMOJI = /[\uD800-\uDBFF][\uDC00-\uDFFF]|[\u2600-\u27BF\uFE0F\u200D]/g;
+  function strip(s) {
+    return String(s == null ? '' : s)
+      .replace(EMOJI, '')
+      .replace(/【[^】]*】|\([^)]*\)|（[^）]*）/g, '')
+      .toLowerCase()
+      .replace(/[\s_\-./·、:：]+/g, '')
+      .trim();
+  }
+  /* 严格区分 ①福利 / ②福利 / 普通 Deepseek，杜绝串台 */
+  function family(s) {
+    var t = String(s == null ? '' : s);
+    if (/①|福利\s*1|福利1|1\s*deepseek|1deepseek/i.test(t)) return '1';
+    if (/②|福利\s*2|福利2|2\s*deepseek|2deepseek/i.test(t)) return '2';
+    return '';
+  }
+  function shortName(s) {
+    if (!s) return '未选择';
+    s = String(s);
+    return s.length > 18 ? s.slice(0, 17) + '\u2026' : s;
+  }
+  function fmt(v) { return Number(v).toLocaleString('zh-CN', { maximumFractionDigits: 2 }); }
+  function num(v) { var n = Number(v); return (v !== '' && v != null && isFinite(n)) ? n : null; }
+
+  /* ---------- 状态语义（只认状态页印出来的那种文字） ---------- */
+  var BAD  = /服务异常|异常|停用|停服|故障|超时|失败|不可用|下线|宕机|offline|\bdown\b|error|fail|abnormal|incident/i;
+  var WARN = /偏慢|超过对应时限|响应慢|缓慢|\bslow\b|degraded/i;
+  var OKW  = /正常\s*[·・:：]|已收到结果|生成成功|健康\s*[·・:：]|healthy\s*[·・:：]/i;
+  var IDLE = /等待调用|暂无样本|不计入统计|无样本|unknown|idle|pending|未检测/i;
+  /* 上架 / 配置值：单独出现时不能当状态证据 */
+  var CFGVAL = /^(active|enabled|available|online|up|ready|pass|passing|true|false|1|0|ok|yes|no|null|undefined|可用|上架|启用|chat|image|video|text|request|null)$/i;
+  /* 模型元信息：里面的描述文字（稳定/正常/官方…）一律不算状态 */
+  var SKIPKEY = /^(id|name|model|modelid|modelname|model_name|description|desc|icon|type|modeltype|requestkind|protocol|provider|vendor|group|category|tag|tags|createdat|updatedat|capturedat|generatedat|url|link|billingunit|memberonly|supportsreference|maxreferences|quality|ratios|sizes|modes|status|statuslabel|available|enabled|active|online|state)$/i;
+
+  function judge(text) {
+    if (!text) return null;
+    var s = String(text);
+    if (BAD.test(s)) {
+      var lab = /服务异常/.test(s) ? '服务异常' : (/停用|停服|下线/.test(s) ? '停用' : '异常');
+      return { st: 'bad', label: lab };
     }
-    if (!x) return null;
-    var v;
-    if (x.type === 'image')      v = (x.textToImagePrice != null ? x.textToImagePrice : x.imagePrice);
-    else if (x.type === 'video') v = x.videoPrice;
-    else                         v = (x.textPricePer100 != null ? x.textPricePer100 : x.textPricePerRequest);
-    if (v == null || !isFinite(Number(v))) return null;
-    var n = Number(v);
-    if (n === 0) return { main: '免费', unit: '' };
-    var unit = x.type === 'image' ? '分/张' : (x.type === 'video' ? '分/视频' : '分/次');
-    var num = n.toLocaleString('zh-CN', { maximumFractionDigits: 2 });
-    return { main: num, unit: unit };
+    if (WARN.test(s)) return { st: 'warn', label: '偏慢' };
+    if (IDLE.test(s)) return { st: 'idle', label: '暂无样本' };
+    if (OKW.test(s)) return { st: 'ok', label: '正常' };
+    return null;
   }
 
-  /* ---------- 2. 当前面板 → 对应模型 ---------- */
+  /* 只收集「看得懂的状态文字」；布尔、上架值、元信息全部丢弃 */
+  function evidence(m) {
+    var buf = [];
+    try {
+      Object.keys(m).forEach(function (k) {
+        if (SKIPKEY.test(k)) return;
+        var v = m[k];
+        if (v == null || typeof v === 'boolean' || typeof v === 'number') return;
+        var s = '';
+        try { s = (typeof v === 'object') ? JSON.stringify(v) : String(v); } catch (e) { s = ''; }
+        if (!s || s.length > 4000) return;
+        if (CFGVAL.test(s.trim())) return;
+        buf.push(s);
+      });
+    } catch (e) {}
+    return buf.join(' | ');
+  }
+
+  /* ---------- 基线：状态页同源快照（54 正常 / 9 偏慢 / 2 服务异常 / 1 等待调用） ---------- */
+  function baseStatus(name) {
+    var t = String(name || ''), f = family(t);
+    if (f === '1') return { st: 'bad',  label: '服务异常' };   /* ①福利Deepseek */
+    if (f === '2') return { st: 'ok',   label: '正常' };       /* ②福利Deepseek */
+    if (/gpt-6-luna|lunafree/i.test(t)) return { st: 'bad', label: '服务异常' };
+    if (/gpt-4\.1-nano|kimi-k2\.7-code|glm-5\.3-flash|dsr1-qwen3|agnes-3\.0-flash/i.test(t) ||
+        /gpt-image-2\.5-flare[\s\S]*原生|flarem?ax/i.test(t) ||
+        /midjourney\s*v8\.2/i.test(t)) return { st: 'warn', label: '偏慢' };
+    if (/deepseek-?v4\.1-?flash|deepseekv41flash/i.test(t)) return { st: 'idle', label: '等待调用' };
+    return { st: 'ok', label: '正常' };
+  }
+
+  /* ---------- 价格（沿用已对上的那套） ---------- */
+  function priceOf(m, role) {
+    var t = String(m.type || '').toLowerCase(), bu = String(m.billingUnit || '').toLowerCase();
+    var isImg = /image|draw|picture|img/i.test(t) || bu === 'image';
+    var isVid = /video/i.test(t) || bu === 'video';
+    var cand;
+    if (role === 'prompts') cand = ['textPricePerRequest', 'textPricePer100', 'price', 'cost', 'credits', 'points'];
+    else if (isVid) cand = ['videoPrice', 'price', 'cost', 'credits', 'points'];
+    else cand = ['textToImagePrice', 'imagePrice', 'imageToImagePrice', 'imagePricePerImage', 'price', 'cost', 'credits', 'points'];
+    var v = null, i;
+    for (i = 0; i < cand.length; i++) if (num(m[cand[i]]) != null) { v = num(m[cand[i]]); break; }
+    if (v === null) {
+      var ks = Object.keys(m);
+      for (i = 0; i < ks.length; i++)
+        if (/price|cost|credit|points/i.test(ks[i]) && num(m[ks[i]]) != null) { v = num(m[ks[i]]); break; }
+    }
+    if (v === null) return null;
+    if (v === 0) return { main: m.memberOnly ? '会员免费' : '免费', unit: '' };
+    return { main: fmt(v), unit: isVid ? '分/视频' : ((isImg && role !== 'prompts') ? '分/张' : '分/次') };
+  }
+  function readSnapshot() {
+    try {
+      var enc = document.getElementById('modelPricesDocument');
+      if (!enc) return;
+      var bytes = Uint8Array.from(atob(enc.textContent.trim()), function (c) { return c.charCodeAt(0); });
+      var doc = new DOMParser().parseFromString(new TextDecoder().decode(bytes), 'text/html');
+      var sc = doc.querySelector('#snapshot');
+      var arr = sc ? (JSON.parse(sc.textContent).models || []) : [];
+      arr.forEach(function (m) {
+        var p = priceOf(m, 'generate');
+        SNAP[strip(m.id || m.name)] = p;
+        SNAP[strip(m.name || m.id)] = p;
+      });
+    } catch (e) {}
+  }
+
+  /* ---------- 索引 ---------- */
+  function rec(name) {
+    var k = strip(name);
+    if (!k) return null;
+    if (!DB[k]) DB[k] = { name: String(name), status: null, label: '', price: null };
+    return DB[k];
+  }
+  function index(r, m) {
+    [m.id, m.name, m.model, m.modelId].forEach(function (x) {
+      var k = strip(x); if (k) IDX[k] = r;
+    });
+  }
+
+  /* 顶层任意健康字段：字段名无关，只按模型标识关联 */
+  function healthExtra(d, m) {
+    var parts = [], keys = [String(m.id || ''), String(m.name || '')].filter(Boolean);
+    var wanted = keys.map(strip).filter(Boolean);
+    function hit(k) {
+      var sk = strip(k);
+      if (!sk) return false;
+      return wanted.some(function (w) { return sk === w || (w.length > 6 && sk.indexOf(w) !== -1); });
+    }
+    function scan(o, depth) {
+      if (!o || depth > 5 || typeof o !== 'object') return;
+      if (Array.isArray(o)) { o.forEach(function (x) { scan(x, depth + 1); }); return; }
+      var label = o.id || o.model || o.name || o.modelId || o.key || '';
+      var own = '';
+      Object.keys(o).forEach(function (k) {
+        var v = o[k];
+        if (v == null || typeof v === 'boolean' || typeof v === 'number') return;
+        var s = '';
+        try { s = (typeof v === 'object') ? JSON.stringify(v) : String(v); } catch (e) { s = ''; }
+        if (s && !CFGVAL.test(s.trim()) && !SKIPKEY.test(k)) own += ' | ' + s;
+      });
+      if (label && hit(label) && own) parts.push(own);
+      Object.keys(o).forEach(function (k) {
+        var v = o[k];
+        if (!v || typeof v !== 'object') return;
+        if (hit(k) && !Array.isArray(v)) {
+          var t = '';
+          Object.keys(v).forEach(function (k2) {
+            var x = v[k2];
+            if (x && typeof x !== 'boolean' && typeof x !== 'number') t += ' | ' + String(x);
+          });
+          if (t) parts.push(t);
+        }
+        scan(v, depth + 1);
+      });
+    }
+    Object.keys(d).forEach(function (k) {
+      if (k === 'models') return;
+      scan(d[k], 0);
+    });
+    return parts.join(' | ');
+  }
+
+  /* 实时数据：只覆盖「明确判定」的结果，且实时 ok 不得覆盖基线异常 */
+  function ingest(d) {
+    if (!d || !Array.isArray(d.models) || !d.models.length) return false;
+    d.models.forEach(function (m) {
+      if (!m || typeof m !== 'object') return;
+      var nm = m.name || m.id || m.model || '';
+      if (!nm) return;
+      var r = rec(nm), j = judge(evidence(m)) || judge(healthExtra(d, m));
+      if (j) {
+        var base = baseStatus(nm);
+        /* 保守策略：接口给出「正常」也不能把已知异常洗绿，直接把异常写回 */
+        if (j.st === 'ok' && base.st === 'bad') { r.status = 'bad'; r.label = base.label; }
+        else { r.status = j.st; r.label = j.label; }
+      }
+      var p = priceOf(m, 'generate');
+      if (p) r.price = p;
+      index(r, m);
+    });
+    return true;
+  }
+
+  /* ---------- 拉取 ---------- */
+  function get(url) {
+    var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    var timer = setTimeout(function () { if (ctl) ctl.abort(); }, 10000);
+    var o = { cache: 'no-store' };
+    if (ctl) o.signal = ctl.signal;
+    return fetch(url, o).then(function (res) {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    }).then(function (x) { clearTimeout(timer); return x; },
+            function (e) { clearTimeout(timer); throw e; });
+  }
+  function refresh(force) {
+    var now = Date.now();
+    if (busy || (!force && now - lastFetch < 28000)) return;
+    busy = true; lastFetch = now;
+    function apply(d) { if (!ingest(d)) throw new Error('bad payload'); }
+    get(API).then(apply)
+      .catch(function () { return get(DIRECT).then(apply); })
+      .then(function () { busy = false; failed = false; render(); },
+            function () { busy = false; failed = true; render(); });
+  }
+
+  /* ---------- 当前面板 → 当前模型 ---------- */
   function currentCtx() {
-    var view = 'generate', model = '', base = '';
+    var view = 'generate', model = '';
     try { if (typeof currentView !== 'undefined') view = currentView; } catch (e) {}
-    try { if (typeof cfg !== 'undefined') base = cfg.baseUrl || ''; } catch (e) {}
     try {
       model = (view === 'prompts')
         ? (typeof visionModel === 'function' ? visionModel() : '')
         : (typeof genModel === 'function' ? genModel() : '');
     } catch (e) {}
-    return {
-      view: view, model: model || '', base: base,
-      isVision: view === 'prompts',
-      role: view === 'prompts' ? '反推模型' : '绘图模型',
-      priceRole: view === 'prompts' ? '反推价' : '绘图价'
-    };
-  }
-  function shortName(s) {
-    if (!s) return '未选择';
-    s = String(s);
-    return s.length > 24 ? s.slice(0, 23) + '…' : s;   // 具体宽度交给 CSS ellipsis
+    if (!model) {
+      var g = document.getElementById('genModelName'), v = document.getElementById('visionModelName');
+      var el = (view === 'prompts') ? v : g;
+      if (el && el.textContent && el.textContent.trim() !== '未选择') model = el.textContent.trim();
+    }
+    return { view: view, model: model || '',
+             role: view === 'prompts' ? '反推模型' : '绘图模型',
+             priceRole: view === 'prompts' ? '反推价' : '绘图价' };
   }
 
-  /* ---------- 3. 状态探测：拿当前接口 /models 验证，并检查所选模型是否在列 ---------- */
-  var netCache = { base: '', ts: 0, ok: false, ids: [] };
-  function setState(kind, label) {
-    dotKind = kind; dotLabel = label; render();
-  }
-  function probe(ctx, key, force) {
-    // 按「当前面板所选模型」判断状态：接口要通 + 该模型要在可用列表里
-    function apply() {
-      if (!ctx.base || !ctx.model) { setState('bad', '未配置'); return; }
-      if (!netCache.ok) { setState('bad', '异常'); return; }
-      var listed = netCache.ids.indexOf(String(ctx.model).toLowerCase()) !== -1;
-      setState(listed ? 'ok' : 'bad', listed ? '正常' : '模型异常');
-    }
-    var now = Date.now();
-    // 同一接口 60 秒内复用探测结果，切面板/换模型只重算、不重复打接口
-    if (!force && netCache.ts && netCache.base === ctx.base && now - netCache.ts < 60000) {
-      apply(); return;
-    }
-    if (!ctx.base || !ctx.model) { apply(); return; }
-    setState('wait', '检测中');
-    var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-    var timer = setTimeout(function () { if (ctl) ctl.abort(); }, 8000);
-    var url = ctx.base.replace(/\/+$/, '') + '/models';
-    var opts = { headers: {} };
-    try { opts.headers = (typeof authHeaders === 'function') ? authHeaders() : {}; } catch (e) {}
-    if (ctl) opts.signal = ctl.signal;
-
-    function finish(ok, ids) {
-      clearTimeout(timer);
-      netCache = { base: ctx.base, ts: Date.now(), ok: ok, ids: ids || [] };
-      apply();
-    }
-    fetch(url, opts).then(function (r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.text();
-    }).then(function (txt) {
-      var j, arr = [];
-      try { j = JSON.parse(txt); } catch (e) { j = null; }
-      if (Array.isArray(j)) arr = j;
-      else if (j) arr = j.data || j.models || j.result || j.list || [];
-      if (!Array.isArray(arr)) arr = [];
-      var ids = arr.map(function (o) {
-        return typeof o === 'string' ? o : (o && (o.id || o.name || o.model || o.model_name) || '');
-      }).filter(Boolean).map(function (s) { return String(s).toLowerCase(); });
-      finish(true, ids);
-    }).catch(function () {
-      finish(false, []);
+  /* 精确优先；弱匹配必须编号一致且候选唯一 */
+  function lookup(model) {
+    var k = strip(model);
+    if (!k) return null;
+    if (IDX[k]) return IDX[k];
+    var f = family(model), w = k.replace(/[①②③④⑤⑥⑦⑧⑨⑩]/g, '');
+    var list = [], seen = {};
+    Object.keys(IDX).forEach(function (key) {
+      if (family(key) !== f) return;            /* 编号不同直接排除 */
+      var kw = key.replace(/[①②③④⑤⑥⑦⑧⑨⑩]/g, '');
+      if (!w || !kw) return;
+      if (kw === w || (w.length > 6 && kw.length > 6 && (w.indexOf(kw) !== -1 || kw.indexOf(w) !== -1))) {
+        if (!seen[key]) { seen[key] = 1; list.push(IDX[key]); }
+      }
     });
+    var uniq = {}, out = [];
+    list.forEach(function (r) { var n = strip(r.name); if (!uniq[n]) { uniq[n] = 1; out.push(r); } });
+    return out.length === 1 ? out[0] : null;
   }
 
-  /* ---------- 4. 渲染（只在数据变化时重建，避免打断红点闪烁动画） ---------- */
-  var dotKind = 'wait', dotLabel = '检测中', lastModel = '', lastRole = '', lastPrice = '';
   function render() {
-    var ctx = currentCtx();
-    var p = priceOf(ctx.model);
-    var sub = shortName(ctx.model);
-    var stColor = dotKind === 'bad' ? ' fi-bad' : '';
-    bStatus.innerHTML =
-      '<span class="fi-line"><span class="fi-dot ' + dotKind + '"></span>' +
-      '<span class="fi-main' + stColor + '">' + dotLabel + '</span></span>' +
-      '<span class="fi-sub" title="' + sub.replace(/"/g, '') + '">' + sub + '</span>';
-    bPrice.innerHTML = p
-      ? '<span class="fi-price-wrap"><span class="fi-main fi-price">' + p.main +
-          (p.unit ? '<span class="fi-yen">' + p.unit + '</span>' : '') + '</span></span>' +
-        '<span class="fi-sub">' + ctx.priceRole + '</span>'
-      : '<span class="fi-main">未收录</span><span class="fi-sub">' + ctx.priceRole + '</span>';
-    bStatus.setAttribute('aria-label', '模型状态：' + dotLabel + '，' + ctx.role + ' ' + (ctx.model || '未选择') + '（点按查看详情）');
-    bPrice.setAttribute('aria-label', '当前' + ctx.role + (p ? '价格 ' + p.main + p.unit : '价格未收录') + '（点按查看价目表）');
+    if (document.body.classList.contains('floats-hidden')) return;
+    var ctx = currentCtx(), r = lookup(ctx.model);
+    var live = r && r.status ? { st: r.status, label: r.label } : null;
+    var base = baseStatus(ctx.model);
+    var s = live || base;
+    var st = s.st, label = s.label;
+    if (failed && !live) label = '同步失败';
+    var dot = st === 'ok' ? 'ok' : (st === 'bad' ? 'bad' : (st === 'warn' ? 'warn' : 'idle'));
+    var cls = st === 'bad' ? ' fi-bad' : (st === 'warn' ? ' fi-warn' : (st === 'idle' ? ' fi-idle' : ''));
+    var p = (r && r.price) ? r.price : (SNAP[strip(ctx.model)] || null);
+    if (p && ctx.view === 'prompts' && p.unit === '分/张') p = { main: p.main, unit: '分/次' };
+    B.innerHTML =
+      '<span class="fi-line"><span class="fi-dot ' + dot + '"></span>' +
+      '<span class="fi-main' + cls + '">' + label + '</span></span>' +
+      '<span class="fi-sub" title="' + String(ctx.model).replace(/"/g, '') + '">' + shortName(ctx.model) + '</span>' +
+      '<span class="fi-price-line' + (p ? '' : ' fi-none') + '">' +
+        (p ? p.main + (p.unit || '') + ' · ' + ctx.priceRole : '价格见弹窗') + '</span>';
+    B.setAttribute('aria-label', '模型状态：' + label + '，' + ctx.role + ' ' + (ctx.model || '未选择') +
+      (p ? '，价格 ' + p.main + (p.unit || '') : '') + '（点按查看详情）');
   }
 
-  /* ---------- 5. 实时同步：切面板 / 换模型 / 改接口 都立刻跟着变 ---------- */
   var lastKey = '';
   function sync() {
     if (document.body.classList.contains('floats-hidden')) { lastKey = ''; return; }
-    var ctx = currentCtx();
-    var key = ctx.view + '|' + ctx.model + '|' + ctx.base;
-    if (key === lastKey) return;
-    lastKey = key;
-    render();
-    probe(ctx, key, false);
+    var ctx = currentCtx(), key = ctx.view + '|' + ctx.model;
+    if (key !== lastKey) { lastKey = key; render(); }
   }
-  sync();
-  setInterval(sync, 600);
-  document.addEventListener('visibilitychange', function () {
-    if (!document.hidden && lastKey) {
-      var ctx = currentCtx();
-      probe(ctx, lastKey, true);
-    }
+  document.addEventListener('click', function (e) {
+    if (e.target.closest && e.target.closest('[data-float-tab],#statusModal')) setTimeout(function () { refresh(true); }, 350);
   });
-  setInterval(function () {
-    if (!document.hidden && lastKey) probe(currentCtx(), lastKey, true);
-  }, 60000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) refresh(true); });
+  window.addEventListener('online', function () { refresh(true); });
+  setInterval(sync, 500);
+  setInterval(function () { if (!document.hidden) refresh(true); }, 30000);
+  setInterval(render, 30000);
+  readSnapshot(); sync(); render(); refresh(true);
 })();
 </script>
+
 </body>
 </html>

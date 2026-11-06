@@ -1,5 +1,5 @@
 {
-  "version": "99.0.12",
+  "version": "99.0.17",
   "url": "https://ccc2200ccc.github.io/stapp/index.html",
-  "notes": "灵感案例替换为提示词库"
+  "notes": "悬浮球状态严格判定：上架状态不再误判为正常，服务异常正确红闪"
 }
