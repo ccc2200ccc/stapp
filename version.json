@@ -1,5 +1,5 @@
 {
-  "version": "99.0.17",
+  "version": "99.0.21",
   "url": "https://ccc2200ccc.github.io/stapp/index.html",
-  "notes": "悬浮球状态严格判定：上架状态不再误判为正常，服务异常正确红闪"
+  "notes": "全中文登录注册页；服务地址内置，普通用户无需填写任何配置；后端合并为一个 Worker"
 }

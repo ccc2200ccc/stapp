@@ -4244,5 +4244,935 @@ body.floats-hidden #creditFloat { display: none !important; }
 })();
 </script>
 
+
+<script>
+/* ============================================================
+ * 账号 + 云端历史（加固版 v4 · 99.0.21 · 零配置）
+ * 纯末尾替换整段 script 标签，不改动 APP 任何原有函数与 DOM
+ *
+ * 关键安全约束：
+ *  - 代码里不存在任何「自动删除云端历史」的路径
+ *  - 拉取失败 / 超时 / 401 一律不标记同步完成，云端与本机都不动
+ *  - 本机历史清空时云端保留；清空云端必须用户输入用户名二次确认
+ *  - 新设备登录只做「增量合并」，绝不覆盖、绝不删除
+ * ============================================================ */
+(function () {
+  'use strict';
+
+  var DEFAULT_BASE = 'https://tupian.ccc2200ccc.workers.dev';
+  var LS_BASE = 'ia_cloud_base_v1';
+  var LS_TOKEN = 'ia_cloud_token_v1';
+  var LS_ACCOUNT = 'ia_cloud_account_v1';
+
+  var BASE = '', token = '', account = '';
+  try {
+    BASE = localStorage.getItem(LS_BASE) || DEFAULT_BASE;
+    token = localStorage.getItem(LS_TOKEN) || '';
+    account = localStorage.getItem(LS_ACCOUNT) || '';
+  } catch (e) {}
+
+  var lastFp = '', pushed = {}, suppress = false, busy = false;
+  var syncedOnce = false, pulling = false, syncMsg = '', cloudCount = 0;
+  var fab, mask;
+
+  /* ---------- 通用 ---------- */
+  function hasHistory() {
+    try { return (typeof history !== 'undefined') && Array.isArray(history); } catch (e) { return false; }
+  }
+  function fp() {
+    if (!hasHistory()) return 'na';
+    try { return history.length + '|' + ((history[0] && history[0].id) || ''); } catch (e) { return 'na'; }
+  }
+  function safeBase(u) {
+    u = String(u || '').trim().replace(/\/+$/, '');
+    return /^https:\/\//i.test(u) ? u : '';
+  }
+  function toastMsg(m) { try { if (typeof window.toast === 'function') window.toast(m, 2800); } catch (e) {} }
+  function $ (id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function pwOk(p) {
+    var s = String(p || '');
+    return /^[\x21-\x7e]{8,64}$/.test(s);
+  }
+  function userOk(u) { return /^[a-z0-9]{3,20}$/.test(u); }
+
+  /* ---------- 接口 ---------- */
+  function logoutLocal() {
+    token = ''; account = ''; syncedOnce = false; pushed = {}; lastFp = ''; syncMsg = '';
+    try {
+      localStorage.removeItem(LS_TOKEN);
+      localStorage.removeItem(LS_ACCOUNT);
+    } catch (e) {}
+    updateFab(); renderState();
+    try { window.dispatchEvent(new CustomEvent('ia-cloud-logout')); } catch (e) {}
+  }
+  async function api(method, path, body) {
+    if (!BASE || !token) return { ok: false, msg: '未登录' };
+    var opt = { method: method, headers: { 'Authorization': 'Bearer ' + token } };
+    if (body) {
+      opt.headers['Content-Type'] = 'application/json';
+      opt.body = JSON.stringify(body);
+    }
+    var ctl = new AbortController();
+    var timer = setTimeout(function () { ctl.abort(); }, 15000);
+    try {
+      var r = await fetch(BASE + path, Object.assign(opt, { signal: ctl.signal }));
+      var j = await r.json().catch(function () { return null; });
+      if (!r.ok) {
+        if (r.status === 401) logoutLocal();
+        return j || { ok: false, msg: '请求失败 ' + r.status };
+      }
+      return j || { ok: false, msg: '响应异常' };
+    } catch (e) {
+      return { ok: false, msg: '连不上服务器' };
+    } finally { clearTimeout(timer); }
+  }
+
+  /* ---------- 缩略图瘦身 ---------- */
+  function shrink(src) {
+    return new Promise(function (resolve) {
+      try {
+        if (!src) return resolve('');
+        if (/^https?:\/\//i.test(src)) return resolve(String(src).slice(0, 70000));
+        if (!/^data:image\//i.test(src)) return resolve('');
+        var im = new Image();
+        im.onload = function () {
+          try {
+            var w = im.naturalWidth || im.width, h = im.naturalHeight || im.height;
+            var k = Math.min(1, 640 / Math.max(w, h));
+            var c = document.createElement('canvas');
+            c.width = Math.max(1, Math.round(w * k));
+            c.height = Math.max(1, Math.round(h * k));
+            c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+            var out = c.toDataURL('image/jpeg', 0.72);
+            resolve(out.length <= 70000 ? out : '');
+          } catch (e) { resolve(''); }
+        };
+        im.onerror = function () { resolve(''); };
+        im.src = src;
+      } catch (e) { resolve(''); }
+    });
+  }
+  function lean(h) {
+    return {
+      id: h.id, ts: h.ts || Date.now(),
+      prompt: String(h.prompt || '').slice(0, 4000),
+      model: String(h.model || '').slice(0, 120),
+      ratio: String(h.ratio || '').slice(0, 20),
+      resolution: String(h.resolution || '').slice(0, 20),
+      count: Number(h.count) || 1,
+      thumb: (h.thumbs && h.thumbs[0]) || (h.images && h.images[0]) || ''
+    };
+  }
+
+  /* ---------- 作品页云标记 ---------- */
+  function badge(text) {
+    try {
+      var c = $('histCount');
+      if (!c) return;
+      var b = $('iaCloudBadge');
+      if (!b) {
+        b = document.createElement('span');
+        b.id = 'iaCloudBadge';
+        b.style.cssText = 'font-size:11px;font-weight:500;margin-left:10px;color:#0aa;opacity:.85;vertical-align:middle;';
+        c.parentNode.appendChild(b);
+      }
+      b.textContent = text ? '☁ ' + text : '';
+    } catch (e) {}
+  }
+
+  /* ---------- 拉取云端：分页 + total 核对，失败绝不动任何数据 ---------- */
+  async function pullFull() {
+    if (pulling || !token || !BASE) return false;
+    pulling = true;
+    try {
+      var all = [], offset = 0, total = -1;
+      for (var page = 0; page < 12; page++) {
+        var r = await api('GET', '/api/history?limit=50&offset=' + offset);
+        if (!r || !r.ok) {
+          syncMsg = '同步失败（本机与云端均未改动，稍后自动重试）';
+          badge(syncMsg); renderState();
+          return false;
+        }
+        if (typeof r.total === 'number') total = r.total;
+        var items = r.items || [];
+        all = all.concat(items);
+        offset += items.length;
+        if (!items.length || (total >= 0 && all.length >= total)) break;
+      }
+      // 服务端说有数据却一条都没给 → 判定异常，不合并、不标记完成
+      if (total > 0 && all.length === 0) {
+        syncMsg = '同步异常（云端有 ' + total + ' 条但未取到，稍后重试）';
+        badge(syncMsg); renderState();
+        return false;
+      }
+      merge(all, total);
+      syncedOnce = true; syncMsg = '';
+      return true;
+    } finally { pulling = false; }
+  }
+
+  /* 增量合并：只往本机补云端没有的，绝不删本机、绝不覆盖同 id */
+  function merge(items, total) {
+    suppress = true;
+    try {
+      cloudCount = total >= 0 ? total : items.length;
+      if (!hasHistory()) return;
+      var byId = {}, cloudIds = {};
+      try { history.forEach(function (h) { if (h && h.id) byId[h.id] = 1; }); } catch (e) {}
+      items.forEach(function (it) { if (it && it.rid) cloudIds[it.rid] = 1; });
+      var added = 0;
+      items.forEach(function (it) {
+        if (!it || !it.rid || byId[it.rid]) return;
+        var t = it.thumb || '';
+        history.push({
+          id: it.rid, ts: it.ts || Date.now(), prompt: it.prompt || '',
+          model: it.model || '', ratio: it.ratio || '', resolution: it.resolution || '4K',
+          count: it.cnt || 1, thumbs: t ? [t] : [], images: t ? [t] : []
+        });
+        byId[it.rid] = 1; added++;
+      });
+      if (added) {
+        try { history.sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); }); } catch (e) {}
+        try { if (typeof window.saveHistory === 'function') window.saveHistory(); } catch (e) {}
+        try { if (typeof window.renderHistory === 'function') window.renderHistory(); } catch (e) {}
+        try { if (typeof window.renderGenResult === 'function') window.renderGenResult(); } catch (e) {}
+      }
+      // 只把「云端已有」的标成已上传；本机独有的留给下一轮上传，两处历史做并集
+      pushed = {};
+      try { history.forEach(function (h) { if (h && h.id && cloudIds[h.id]) pushed[h.id] = 1; }); } catch (e) {}
+      lastFp = ''; // 触发一次增量上传
+      badge('云端 ' + cloudCount + ' 条 · 本机 ' + history.length + ' 条' + (added ? ' · 新增 ' + added : ''));
+    } catch (e) {
+      syncMsg = '合并异常（数据未改动）';
+      badge(syncMsg);
+    } finally { suppress = false; renderState(); }
+  }
+
+  /* ---------- 只上传，不删除 ---------- */
+  async function pushLocal() {
+    if (!hasHistory() || !token || !BASE) return 0;
+    var todo = [];
+    try {
+      for (var i = 0; i < history.length && todo.length < 12; i++) {
+        var h = history[i];
+        if (!h || !h.id || pushed[h.id]) continue;
+        var l = lean(h);
+        l.thumb = await shrink(l.thumb);
+        todo.push(l);
+      }
+    } catch (e) { return 0; }
+    if (!todo.length) return 0;
+    var res = await api('POST', '/api/history', { items: todo });
+    if (res && res.ok) {
+      todo.forEach(function (x) { pushed[x.id] = 1; });
+      cloudCount = Math.max(cloudCount, Object.keys(pushed).length);
+      return todo.length;
+    }
+    if (res && res.msg) badge(res.msg);
+    return -1; // 失败：不标记，下一轮重试
+  }
+
+  async function tick() {
+    if (!token || !BASE || busy || suppress || !syncedOnce || !hasHistory()) return;
+    var f = fp();
+    if (f === lastFp) return;
+    busy = true;
+    try {
+      var n = await pushLocal();
+      if (n > 0) badge('已上传 ' + n + ' 条');
+      if (n >= 0) lastFp = f;
+    } catch (e) { /* 静默重试 */ }
+    finally { busy = false; }
+  }
+
+  /* ---------- 二次确认（不用 window.confirm，srcdoc 里更可靠） ---------- */
+  function askConfirm(title, text, fields, onOk) {
+    var box = $('iaCloudConfirm');
+    if (!box) return;
+    var html = [
+      '<div style="margin-top:14px;padding:14px;border-radius:14px;background:#fff5f5;border:1px solid #ffd9d9;">',
+      '<strong style="font-size:13px;color:#b33;">', esc(title), '</strong>',
+      '<p style="font-size:12px;line-height:1.7;color:#666;margin:8px 0 10px;">', esc(text), '</p>'
+    ];
+    fields.forEach(function (f) {
+      html.push('<label style="display:block;font-size:11px;color:#777;margin-bottom:4px;">', esc(f.label), '</label>');
+      html.push('<input id="iaCf_', f.key, '" type="', (f.type || 'text'), '" autocomplete="off" style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid #e5b8b8;border-radius:10px;font-size:12px;margin-bottom:10px;outline:none;">');
+    });
+    html.push(
+      '<div style="display:flex;gap:8px;">',
+      '<button id="iaCfCancel" style="flex:1;padding:9px;border:1px solid #ddd;border-radius:10px;background:#fff;color:#666;font-size:12px;cursor:pointer;">取消</button>',
+      '<button id="iaCfOk" style="flex:1;padding:9px;border:0;border-radius:10px;background:#d64545;color:#fff;font-weight:700;font-size:12px;cursor:pointer;">确认</button>',
+      '</div></div>'
+    );
+    box.innerHTML = html.join('');
+    box.style.display = 'block';
+    $('iaCfCancel').onclick = function () { box.style.display = 'none'; box.innerHTML = ''; };
+    $('iaCfOk').onclick = async function () {
+      var vals = {};
+      fields.forEach(function (f) { vals[f.key] = (($('iaCf_' + f.key) || {}).value || '').trim(); });
+      box.style.display = 'none'; box.innerHTML = '';
+      try { await onOk(vals); } catch (e) { toastMsg('操作失败，稍后再试'); }
+    };
+    try { box.scrollIntoView({ block: 'nearest' }); } catch (e) {}
+  }
+
+  /* ---------- UI ---------- */
+  function updateFab() {
+    if (!fab) return;
+    fab.textContent = token ? (account ? String(account).charAt(0).toUpperCase() : '✓') : '👤';
+    fab.style.background = token ? 'rgba(10,170,170,0.94)' : 'rgba(255,255,255,0.94)';
+    fab.style.color = token ? '#fff' : '#333';
+  }
+
+  function renderState() {
+    var st = $('iaCloudState'), guest = $('iaCloudGuest'), user = $('iaCloudUser');
+    if (!st) return;
+    if (token) {
+      var localN = 0;
+      try { localN = hasHistory() ? history.length : 0; } catch (e) {}
+      st.innerHTML = '<strong>已登录：' + esc(account) + '</strong><br>' +
+        '云端 ' + cloudCount + ' 条 · 本机 ' + localN + ' 条' +
+        (syncMsg ? '<br><span style="color:#c60;">' + esc(syncMsg) + '</span>' : '<br><span style="color:#0a0;">历史自动同步中</span>');
+      st.style.background = syncMsg ? 'rgba(220,90,40,.10)' : 'rgba(10,170,170,.10)';
+      st.style.color = syncMsg ? '#a33' : '#077';
+      if (guest) guest.style.display = 'none';
+      if (user) user.style.display = 'block';
+    } else {
+      st.textContent = '未登录 · 登录后作品跨设备可见，未登录时一切照旧存本机';
+      st.style.background = 'rgba(10,170,170,.10)';
+      st.style.color = '#077';
+      if (guest) guest.style.display = 'block';
+      if (user) user.style.display = 'none';
+    }
+    var row = $('iaCloudServerRow'), bi = $('iaCloudBase');
+    if (row) row.textContent = '';   // 地址已内置，普通用户无需看到
+    if (bi) bi.style.display = BASE ? 'none' : 'block';
+    var ed = $('iaCloudSrvEdit');
+    if (ed) ed.onclick = function () { if (bi) { bi.style.display = 'block'; bi.focus(); } };
+    updateFab();
+  }
+
+  var BTN = 'padding:10px 8px;border:1px solid #0aa;border-radius:11px;background:#fff;color:#0aa;font-size:12px;font-weight:600;cursor:pointer;';
+  var BTN_SOLID = 'padding:10px 8px;border:0;border-radius:11px;background:#0aa;color:#fff;font-size:12px;font-weight:600;cursor:pointer;';
+  var BTN_GRAY = 'padding:10px 8px;border:1px solid #e0e0e0;border-radius:11px;background:#fff;color:#666;font-size:12px;cursor:pointer;';
+  var INP = 'width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #ddd;border-radius:11px;font-size:13px;margin-bottom:10px;outline:none;';
+
+  function buildUI() {
+    fab = document.createElement('div');
+    fab.id = 'iaCloudFab';
+    fab.title = '账号与云端历史';
+    fab.setAttribute('role', 'button');
+    fab.setAttribute('aria-label', '账号与云端历史');
+    fab.style.cssText = [
+      'position:fixed', 'left:12px', 'bottom:12px', 'width:44px', 'height:44px',
+      'border-radius:50%', 'display:flex', 'align-items:center', 'justify-content:center',
+      'font-size:17px', 'font-weight:700', 'cursor:pointer', 'z-index:9998',
+      'box-shadow:0 4px 14px rgba(0,0,0,.25)', 'border:1px solid rgba(0,0,0,.08)',
+      'background:rgba(255,255,255,.94)', 'color:#333', 'user-select:none',
+      '-webkit-tap-highlight-color:transparent'
+    ].join(';');
+    document.body.appendChild(fab);
+
+    mask = document.createElement('div');
+    mask.id = 'iaCloudMask';
+    mask.style.cssText = 'position:fixed;inset:0;background:rgba(8,10,18,.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);z-index:10050;display:none;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
+    mask.innerHTML = [
+      '<div id="iaCloudPanel" style="width:100%;max-width:380px;max-height:88vh;overflow-y:auto;box-sizing:border-box;padding:20px;border-radius:22px;background:rgba(255,255,255,.97);color:#222;box-shadow:0 18px 50px rgba(0,0,0,.35);font-size:13px;">',
+      '  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">',
+      '    <strong style="font-size:15px;">账号与云端历史</strong>',
+      '    <button id="iaCloudClose" style="border:0;background:rgba(0,0,0,.06);width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:14px;line-height:1;">✕</button>',
+      '  </div>',
+      '  <div id="iaCloudState" style="padding:10px 12px;border-radius:12px;background:rgba(10,170,170,.1);color:#077;margin-bottom:12px;line-height:1.7;font-size:12px;"></div>',
+
+      '  <div id="iaCloudServer" style="display:none;">',
+      '    <div id="iaCloudServerRow" style="font-size:11px;color:#777;margin-bottom:6px;"></div>',
+      '    <input id="iaCloudBase" type="url" placeholder="https://xxx.xxx.workers.dev" style="', INP, '">',
+      '  </div>',
+
+      '  <div id="iaCloudGuest">',
+      '    <label style="display:block;font-size:11px;color:#777;margin-bottom:5px;">用户名（3~20 位英文字母或数字）</label>',
+      '    <input id="iaCloudAcc" type="text" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="例如 yuanbao2026" style="', INP, '">',
+      '    <label style="display:block;font-size:11px;color:#777;margin-bottom:5px;">密码</label>',
+      '    <div style="position:relative;">',
+      '      <input id="iaCloudPwd" type="password" autocomplete="current-password" placeholder="8~64 位，英文/数字/符号任意组合" style="', INP, 'padding-right:44px;">',
+      '      <button id="iaCloudEye" type="button" style="position:absolute;right:8px;top:7px;border:0;background:none;color:#999;font-size:12px;cursor:pointer;">显示</button>',
+      '    </div>',
+      '    <p style="font-size:11px;line-height:1.7;color:#888;margin:0 0 12px;">密码 8~64 位，纯英文、纯数字或符号都可以。账号仅使用用户名，不收集邮箱与手机号。</p>',
+      '    <div style="display:flex;gap:10px;">',
+      '      <button id="iaCloudLogin" style="flex:1;', BTN_SOLID, '">登录</button>',
+      '      <button id="iaCloudReg" style="flex:1;', BTN, '">注册</button>',
+      '    </div>',
+      '  </div>',
+
+      '  <div id="iaCloudUser" style="display:none;">',
+      '    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:8px;">',
+      '      <button id="iaCloudSync" style="', BTN_SOLID, '">立即同步</button>',
+      '      <button id="iaCloudPush" style="', BTN, '">上传本机历史</button>',
+      '      <button id="iaCloudExport" style="', BTN_GRAY, '">导出我的数据</button>',
+      '      <button id="iaCloudPwdToggle" style="', BTN_GRAY, '">修改密码</button>',
+      '    </div>',
+      '    <div id="iaCloudPwdBox" style="display:none;padding:12px;border-radius:12px;background:#f7f8fa;margin-bottom:8px;">',
+      '      <input id="iaCloudOldPw" type="password" placeholder="原密码" style="', INP, '">',
+      '      <input id="iaCloudNewPw" type="password" placeholder="新密码（8~64 位，任意组合）" style="', INP, '">',
+      '      <button id="iaCloudPwdSave" style="width:100%;', BTN_SOLID, '">保存并退出其它设备</button>',
+      '    </div>',
+      '    <div style="display:flex;gap:8px;margin-bottom:16px;">',
+      '      <button id="iaCloudLogout" style="flex:1;', BTN_GRAY, '">退出登录</button>',
+      '      <button id="iaCloudLogoutAll" style="flex:1;', BTN_GRAY, '">退出所有设备</button>',
+      '    </div>',
+      '    <div style="border-top:1px solid #eee;padding-top:12px;">',
+      '      <div style="font-size:11px;color:#999;margin-bottom:8px;">危险操作（需二次确认）</div>',
+      '      <div style="display:flex;gap:8px;">',
+      '        <button id="iaCloudClear" style="flex:1;padding:9px;border:1px solid #e8b0b0;border-radius:11px;background:#fff;color:#c44;font-size:12px;cursor:pointer;">清空云端历史</button>',
+      '        <button id="iaCloudDelete" style="flex:1;padding:9px;border:1px solid #e8b0b0;border-radius:11px;background:#fff;color:#c44;font-size:12px;cursor:pointer;">删除账号</button>',
+      '      </div>',
+      '    </div>',
+      '  </div>',
+
+      '  <div id="iaCloudConfirm" style="display:none;"></div>',
+      '  <p style="font-size:11px;line-height:1.75;color:#999;margin:16px 0 0;">密码加盐哈希后存于你自己的 Cloudflare 数据库；云端存提示词、模型、时间与 640px 缩略图，原图仍在本机。本机清空历史不会删除云端，云端清空也不会删除本机。</p>',
+      '</div>'
+    ].join('');
+    document.body.appendChild(mask);
+
+    function open() { $('iaCloudConfirm').style.display = 'none'; $('iaCloudConfirm').innerHTML = ''; renderState(); mask.style.display = 'flex'; }
+    function close() { mask.style.display = 'none'; }
+
+    fab.addEventListener('click', open);
+    $('iaCloudClose').addEventListener('click', close);
+    mask.addEventListener('click', function (e) { if (e.target === mask) close(); });
+    $('iaCloudEye').addEventListener('click', function () {
+      var p = $('iaCloudPwd');
+      var show = p.type === 'password';
+      p.type = show ? 'text' : 'password';
+      this.textContent = show ? '隐藏' : '显示';
+    });
+    $('iaCloudAcc').addEventListener('input', function () {
+      var v = this.value.toLowerCase().replace(/[^a-z0-9@.+-]/g, '');
+      if (v !== this.value) this.value = v;
+    });
+
+    /* ---- 登录 / 注册 ---- */
+    async function submit(isReg) {
+      var bEl = $('iaCloudBase');
+      var b = safeBase((bEl && bEl.value) || BASE);
+      if (!b) { toastMsg('服务器地址要以 https:// 开头'); return; }
+      BASE = b;
+      try { localStorage.setItem(LS_BASE, BASE); } catch (e) {}
+
+      var rawU = ($('iaCloudAcc').value || '').trim().toLowerCase();
+      var u = isReg ? rawU.replace(/[^a-z0-9]/g, '') : rawU;
+      var p = $('iaCloudPwd').value || '';
+      if (isReg && !userOk(u)) { toastMsg('用户名需 3~20 位，仅限英文字母和数字'); return; }
+      if (isReg && !pwOk(p)) { toastMsg('密码需 8~64 位，英文/数字/符号任意组合'); return; }
+      if (!isReg && (!rawU || !p)) { toastMsg('请填用户名和密码'); return; }
+
+      var btn = $(isReg ? 'iaCloudReg' : 'iaCloudLogin');
+      var old = btn.textContent;
+      btn.textContent = '请稍候…'; btn.disabled = true;
+      try {
+        var ctl = new AbortController();
+        var tm = setTimeout(function () { ctl.abort(); }, 15000);
+        var r = await fetch(BASE + (isReg ? '/api/register' : '/api/login'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: u, password: p }),
+          signal: ctl.signal
+        });
+        clearTimeout(tm);
+        var j = await r.json().catch(function () { return null; });
+        if (!r.ok || !j || !j.ok) { toastMsg((j && j.msg) || '操作失败，检查服务器地址'); return; }
+        token = j.token; account = j.username || u;
+        try {
+          localStorage.setItem(LS_TOKEN, token);
+          localStorage.setItem(LS_ACCOUNT, account);
+        } catch (e) {}
+        pushed = {}; lastFp = ''; syncedOnce = false; syncMsg = ''; cloudCount = 0;
+        renderState();
+        toastMsg(isReg ? '注册成功，正在合并云端历史' : '登录成功，正在合并云端历史');
+        await pullFull();
+        renderState();
+        close();
+      } catch (e) {
+        toastMsg('连不上服务器，检查地址或稍后再试');
+      } finally {
+        btn.textContent = old; btn.disabled = false;
+      }
+    }
+    $('iaCloudLogin').addEventListener('click', function () { submit(false); });
+    $('iaCloudReg').addEventListener('click', function () { submit(true); });
+    $('iaCloudPwd').addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(false); });
+
+    /* ---- 已登录操作 ---- */
+    $('iaCloudSync').addEventListener('click', async function () {
+      toastMsg('正在同步…');
+      var ok = await pullFull();
+      if (ok) {
+        var me = await api('GET', '/api/me');
+        if (me && me.ok) cloudCount = me.cloudCount;
+        renderState();
+        toastMsg('同步完成：云端 ' + cloudCount + ' 条');
+      } else toastMsg(syncMsg || '同步失败，数据未改动');
+    });
+
+    $('iaCloudPush').addEventListener('click', async function () {
+      if (!syncedOnce) { toastMsg('请先点「立即同步」'); return; }
+      toastMsg('正在上传本机历史…');
+      pushed = {}; lastFp = '';
+      var total = 0, guard = 0;
+      while (guard++ < 30) {
+        var n = await pushLocal();
+        if (n <= 0) break;
+        total += n;
+      }
+      lastFp = fp();
+      var me = await api('GET', '/api/me');
+      if (me && me.ok) cloudCount = me.cloudCount;
+      renderState();
+      toastMsg('已上传 ' + total + ' 条，云端共 ' + cloudCount + ' 条');
+    });
+
+    $('iaCloudExport').addEventListener('click', async function () {
+      var r = await api('GET', '/api/export');
+      if (!r || !r.ok) { toastMsg((r && r.msg) || '导出失败'); return; }
+      try {
+        var blob = new Blob([JSON.stringify(r, null, 2)], { type: 'application/json' });
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'stapp-history-' + account + '.json';
+        document.body.appendChild(a); a.click();
+        setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+        toastMsg('已导出 ' + (r.items || []).length + ' 条');
+      } catch (e) { toastMsg('浏览器不支持下载'); }
+    });
+
+    $('iaCloudPwdToggle').addEventListener('click', function () {
+      var box = $('iaCloudPwdBox');
+      box.style.display = box.style.display === 'none' ? 'block' : 'none';
+    });
+    $('iaCloudPwdSave').addEventListener('click', async function () {
+      var o = $('iaCloudOldPw').value || '', n = $('iaCloudNewPw').value || '';
+      if (!pwOk(n)) { toastMsg('新密码需 8~64 位，英文/数字/符号任意组合'); return; }
+      var r = await api('POST', '/api/password', { oldPassword: o, newPassword: n });
+      if (!r || !r.ok) { toastMsg((r && r.msg) || '修改失败'); return; }
+      token = r.token;
+      try { localStorage.setItem(LS_TOKEN, token); } catch (e) {}
+      $('iaCloudOldPw').value = ''; $('iaCloudNewPw').value = '';
+      $('iaCloudPwdBox').style.display = 'none';
+      toastMsg(r.msg || '密码已修改');
+    });
+
+    $('iaCloudLogout').addEventListener('click', async function () {
+      try { await api('POST', '/api/logout', {}); } catch (e) {}
+      logoutLocal(); badge(''); toastMsg('已退出，本机历史保留');
+    });
+    $('iaCloudLogoutAll').addEventListener('click', function () {
+      askConfirm('退出所有设备', '所有已登录设备都会退出，云端历史不受影响。', [], async function () {
+        var r = await api('POST', '/api/logout-all', {});
+        if (r && r.ok) { logoutLocal(); badge(''); toastMsg('所有设备已退出'); }
+        else toastMsg((r && r.msg) || '操作失败');
+      });
+    });
+
+    $('iaCloudClear').addEventListener('click', function () {
+      askConfirm(
+        '清空云端历史',
+        '云端目前有 ' + cloudCount + ' 条记录，清空后无法恢复。本机历史会完整保留，且不会自动重新上传。请输入用户名「' + account + '」确认。',
+        [{ key: 'confirm', label: '输入用户名确认', type: 'text' }],
+        async function (v) {
+          var r = await api('DELETE', '/api/history', { confirm: v.confirm });
+          if (!r || !r.ok) { toastMsg((r && r.msg) || '清空失败'); return; }
+          cloudCount = 0;
+          pushed = {};
+          try { if (hasHistory()) history.forEach(function (h) { if (h && h.id) pushed[h.id] = 1; }); } catch (e) {}
+          lastFp = fp();
+          badge('云端已清空 · 本机历史保留');
+          renderState();
+          toastMsg('云端已清空');
+        }
+      );
+    });
+
+    $('iaCloudDelete').addEventListener('click', function () {
+      askConfirm(
+        '删除账号',
+        '账号、云端历史和所有登录会话会被永久删除，本机历史保留。请输入用户名和当前密码确认。',
+        [
+          { key: 'confirm', label: '输入用户名「' + account + '」', type: 'text' },
+          { key: 'password', label: '输入当前密码', type: 'password' }
+        ],
+        async function (v) {
+          var r = await api('DELETE', '/api/account', { confirm: v.confirm, password: v.password });
+          if (!r || !r.ok) { toastMsg((r && r.msg) || '删除失败'); return; }
+          logoutLocal(); badge('');
+          toastMsg('账号已删除，本机历史保留');
+        }
+      );
+    });
+  }
+
+
+  /* ---------- 登录门禁联动（99.0.20） ---------- */
+  window.addEventListener('ia-cloud-auth', function () {
+    try {
+      BASE = localStorage.getItem(LS_BASE) || BASE;
+      token = localStorage.getItem(LS_TOKEN) || '';
+      account = localStorage.getItem(LS_ACCOUNT) || '';
+    } catch (e) {}
+    syncedOnce = false; pushed = {}; lastFp = ''; syncMsg = ''; cloudCount = 0;
+    renderState(); updateFab();
+    if (token && BASE) pullFull();
+  });
+
+  /* ---------- 启动：整体包在 try 里，失败也不影响原 APP ---------- */
+  try {
+    if (!document.body) return;
+    buildUI();
+    renderState();
+    if (token && BASE) pullFull();
+    setInterval(tick, 1800);
+    setInterval(function () {
+      if (token && BASE && !syncedOnce && !pulling) pullFull();
+    }, 20000);
+    setInterval(async function () {
+      if (!token || !BASE || document.hidden) return;
+      var me = await api('GET', '/api/me');
+      if (me && me.ok) { cloudCount = me.cloudCount; renderState(); }
+    }, 60000);
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden && token && BASE) {
+        if (syncedOnce) tick(); else pullFull();
+      }
+    });
+  } catch (e) {
+    /* 静默降级：账号模块不可用时，APP 原有功能完全不受影响 */
+  }
+})();
+
+</script>
+
+<script>
+/* ============================================================
+ * 登录门禁（99.0.21 · 全中文 / 零配置）
+ * 纯末尾追加，不改动 APP 任何原有 DOM / 函数
+ *  - 服务地址写死在 DEFAULT_BASE，普通用户永远不需要填任何配置
+ *  - 未登录：全屏中文登录页，必须登录或注册成功才能进入软件
+ *  - 已登录：启动页后自动放行；令牌过期则踢回登录页
+ *  - 退出登录 / 删除账号 / 令牌失效 → 自动重新弹出登录页
+ *  - 隐藏调试入口：连点底部说明 5 次（仅换地址时管理员用一次）
+ * ============================================================ */
+(function () {
+  'use strict';
+
+  /* 部署地址：一个 Worker 同时提供「模型状态反代」与「账号 API」 */
+  var DEFAULT_BASE = 'https://tupian.ccc2200ccc.workers.dev';
+
+  var LS_BASE = 'ia_cloud_base_v1';
+  var LS_TOKEN = 'ia_cloud_token_v1';
+  var LS_ACCOUNT = 'ia_cloud_account_v1';
+
+  function ls(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
+  function setls(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function rmls(k) { try { localStorage.removeItem(k); } catch (e) {} }
+  function $(id) { return document.getElementById(id); }
+  function safeBase(u) {
+    u = String(u || '').trim().replace(/\/+$/, '');
+    return /^https:\/\//i.test(u) ? u : '';
+  }
+  function fire(name) {
+    try { window.dispatchEvent(new CustomEvent(name)); } catch (e) {
+      try { window.dispatchEvent(new Event(name)); } catch (e2) {}
+    }
+  }
+
+  var BASE = safeBase(ls(LS_BASE)) || DEFAULT_BASE;
+  var TOKEN = ls(LS_TOKEN), ACCOUNT = ls(LS_ACCOUNT);
+  var mode = 'in', oldOverflow = '';
+
+  /* ---------- 样式 ---------- */
+  var css = document.createElement('style');
+  css.id = 'iaGateCss';
+  css.textContent = [
+    '#iaGate{position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;',
+    'padding:16px;box-sizing:border-box;overflow-y:auto;',
+    'background:radial-gradient(1200px 700px at 20% 0%,#f7f9ff 0%,#e9edf6 55%,#e4e9f3 100%);',
+    'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;',
+    'transition:opacity .28s ease;}',
+    '#iaGate.ia-out{opacity:0;pointer-events:none;}',
+    'body.ia-gate-locked{overflow:hidden!important;}',
+    'body.ia-gate-locked #iaCloudFab{display:none!important;}',
+    '.ia-card{width:100%;max-width:390px;min-height:560px;box-sizing:border-box;padding:38px 30px 26px;',
+    'background:#fff;border-radius:30px;box-shadow:0 26px 70px rgba(28,42,84,.14),0 2px 8px rgba(28,42,84,.05);',
+    'display:flex;flex-direction:column;position:relative;}',
+    '.ia-splash{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;}',
+    '.ia-logo{width:104px;height:104px;border-radius:30px;display:flex;align-items:center;justify-content:center;',
+    'background:linear-gradient(150deg,#ffd066 0%,#ffb13b 52%,#ff9f24 100%);',
+    'box-shadow:0 16px 34px rgba(255,167,38,.36);margin-bottom:28px;}',
+    '.ia-logo svg{width:58px;height:58px;}',
+    '.ia-brand{font-size:31px;font-weight:800;letter-spacing:.5px;color:#1b2436;margin:0 0 10px;}',
+    '.ia-slogan{font-size:13px;color:#8b94a8;letter-spacing:2px;margin:0;}',
+    '.ia-bar{width:108px;height:4px;border-radius:4px;background:#e7ebf3;margin:44px auto 0;}',
+    '.ia-h1{font-size:27px;font-weight:800;color:#1b2436;text-align:center;margin:6px 0 26px;letter-spacing:.3px;}',
+    '.ia-lb{display:block;font-size:12px;color:#7d879a;margin:0 0 8px 3px;letter-spacing:.5px;}',
+    '.ia-in{width:100%;box-sizing:border-box;height:48px;padding:0 15px;border:1px solid #e2e8f2;',
+    'border-radius:14px;background:#fff;color:#1b2436;font-size:14px;outline:none;transition:border-color .18s,box-shadow .18s;}',
+    '.ia-in::placeholder{color:#b3bac8;}',
+    '.ia-in:focus{border-color:#ffb13b;box-shadow:0 0 0 3px rgba(255,177,59,.14);}',
+    '.ia-field{margin-bottom:16px;}',
+    '.ia-pwd{position:relative;}',
+    '.ia-pwd .ia-in{padding-right:60px;}',
+    '.ia-eye{position:absolute;right:8px;top:8px;height:32px;padding:0 10px;border:0;background:transparent;',
+    'color:#98a1b3;font-size:12px;cursor:pointer;}',
+    '.ia-forgot{text-align:right;margin:-6px 2px 20px;}',
+    '.ia-forgot a{font-size:12px;color:#98a1b3;text-decoration:none;cursor:pointer;}',
+    '.ia-forgot a:hover{color:#ff9f24;}',
+    '.ia-primary{width:100%;height:50px;border:0;border-radius:14px;cursor:pointer;',
+    'background:linear-gradient(100deg,#ffc451 0%,#ffb13b 45%,#ffa726 100%);',
+    'color:#fff;font-size:14px;font-weight:800;letter-spacing:3px;',
+    'box-shadow:0 12px 26px rgba(255,167,38,.36);transition:transform .12s,box-shadow .18s,opacity .18s;}',
+    '.ia-primary:hover{box-shadow:0 14px 30px rgba(255,167,38,.46);}',
+    '.ia-primary:active{transform:scale(.975);}',
+    '.ia-primary:disabled{opacity:.62;cursor:wait;}',
+    '.ia-switch{text-align:center;font-size:13px;color:#6b7488;margin:18px 0 0;}',
+    '.ia-switch a{color:#ff9f24;font-weight:700;text-decoration:none;cursor:pointer;}',
+    '.ia-line{height:1px;background:#edf0f6;margin:24px 0 14px;}',
+    '.ia-note{text-align:center;font-size:11px;color:#9aa3b5;line-height:1.8;margin:0;user-select:none;cursor:default;}',
+    '.ia-err{display:none;box-sizing:border-box;width:100%;padding:10px 12px;margin:-10px 0 16px;',
+    'border-radius:11px;background:#fff2ef;color:#c2513c;font-size:12px;line-height:1.6;}',
+    /* 隐藏调试框：默认完全不占位 */
+    '.ia-debug{display:none;margin-top:14px;padding:12px;border-radius:12px;background:#f7f8fb;text-align:left;}',
+    '.ia-debug p{font-size:11px;color:#8b94a8;margin:0 0 8px;line-height:1.6;}',
+    '.ia-debug .ia-in{height:38px;font-size:12px;margin-bottom:8px;}',
+    '.ia-debug button{width:100%;height:34px;border:1px solid #e2e8f2;border-radius:10px;background:#fff;',
+    'color:#5c6578;font-size:12px;font-weight:600;cursor:pointer;}',
+    '@media(max-width:420px){.ia-card{padding:32px 22px 22px;min-height:520px;border-radius:26px;}}'
+  ].join('');
+  document.head.appendChild(css);
+
+  /* ---------- 结构：全中文，无任何服务器配置输入框 ---------- */
+  var gate = document.createElement('div');
+  gate.id = 'iaGate';
+  gate.innerHTML = [
+    '<div class="ia-card">',
+    '  <div id="iaGateSplash" class="ia-splash">',
+    '    <div class="ia-logo"><svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">',
+    '      <rect x="9" y="13" width="46" height="38" rx="9" fill="#fff"/>',
+    '      <circle cx="24" cy="27" r="4.4" fill="#ffb13b"/>',
+    '      <path d="M13 45l11-12 8 8 7-6 12 10" stroke="#ffb13b" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>',
+    '      <path d="M49 7l1.7 4.3L55 13l-4.3 1.7L49 19l-1.7-4.3L43 13l4.3-1.7L49 7z" fill="#fff"/>',
+    '    </svg></div>',
+    '    <h1 class="ia-brand">灵境 AI</h1>',
+    '    <p class="ia-slogan">灵感即刻成画</p>',
+    '    <div class="ia-bar"></div>',
+    '  </div>',
+    '  <div id="iaGateForm" style="display:none;flex:1;flex-direction:column;">',
+    '    <h1 class="ia-h1" id="iaGateTitle">登录</h1>',
+    '    <div id="iaGateErr" class="ia-err"></div>',
+    '    <div class="ia-field"><label class="ia-lb" for="iaGateUser">用户名</label>',
+    '      <input id="iaGateUser" class="ia-in" type="text" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="3~20 位英文字母或数字"></div>',
+    '    <div class="ia-field"><label class="ia-lb" for="iaGatePwd">密码</label>',
+    '      <div class="ia-pwd"><input id="iaGatePwd" class="ia-in" type="password" autocomplete="current-password" placeholder="8~64 位，纯英文 / 纯数字 / 符号均可">',
+    '      <button id="iaGateEye" class="ia-eye" type="button">显示</button></div></div>',
+    '    <div id="iaGateConfirmWrap" class="ia-field" style="display:none;">',
+    '      <label class="ia-lb" for="iaGateConfirm">确认密码</label>',
+    '      <input id="iaGateConfirm" class="ia-in" type="password" autocomplete="new-password" placeholder="请再次输入密码"></div>',
+    '    <div class="ia-forgot"><a id="iaGateForgot">忘记密码？</a></div>',
+    '    <button id="iaGateSubmit" class="ia-primary" type="button">登 录</button>',
+    '    <p class="ia-switch" id="iaGateSwitchLine">还没有账号？<a id="iaGateSwitch">立即注册</a></p>',
+    '    <div class="ia-line"></div>',
+    '    <p class="ia-note" id="iaGateNote">作品与提示词自动保存在你的云端账号<br>换设备登录即可继续创作</p>',
+    '    <div id="iaGateDebug" class="ia-debug">',
+    '      <p>仅部署时使用的同步服务地址。普通用户无需理会，改完请再次隐藏本框。</p>',
+    '      <input id="iaGateBase" class="ia-in" type="url" placeholder="https://xxx.xxx.workers.dev" spellcheck="false">',
+    '      <button id="iaGateSrvSave" type="button">保存地址</button>',
+    '    </div>',
+    '  </div>',
+    '</div>'
+  ].join('');
+  document.body.appendChild(gate);
+  document.body.classList.add('ia-gate-locked');
+  oldOverflow = document.body.style.overflow;
+  document.body.style.overflow = 'hidden';
+
+  /* ---------- 显隐 ---------- */
+  function showErr(m) {
+    var e = $('iaGateErr');
+    if (!e) return;
+    e.textContent = m || '';
+    e.style.display = m ? 'block' : 'none';
+  }
+  function showForm() {
+    var s = $('iaGateSplash'), f = $('iaGateForm');
+    if (s) s.style.display = 'none';
+    if (f) f.style.display = 'flex';
+    gate.style.display = 'flex';
+  }
+  function unlock(offline) {
+    gate.classList.add('ia-out');
+    document.body.classList.remove('ia-gate-locked');
+    document.body.style.overflow = oldOverflow;
+    setTimeout(function () { gate.style.display = 'none'; gate.classList.remove('ia-out'); }, 300);
+    if (offline) {
+      try { if (typeof window.toast === 'function') window.toast('离线模式：已保留本机登录状态', 2600); } catch (e) {}
+    }
+  }
+  function relock(msg) {
+    TOKEN = ''; ACCOUNT = '';
+    rmls(LS_TOKEN); rmls(LS_ACCOUNT);
+    gate.classList.remove('ia-out');
+    gate.style.display = 'flex';
+    document.body.classList.add('ia-gate-locked');
+    document.body.style.overflow = 'hidden';
+    var p = $('iaGatePwd'), c = $('iaGateConfirm');
+    if (p) p.value = '';
+    if (c) c.value = '';
+    setMode('in');
+    showForm();
+    showErr(msg || '');
+  }
+  function setMode(m) {
+    mode = m;
+    var reg = m === 'reg';
+    var t = $('iaGateTitle'), b = $('iaGateSubmit'), sw = $('iaGateSwitchLine'),
+        cw = $('iaGateConfirmWrap'), fg = $('iaGateForgot');
+    if (t) t.textContent = reg ? '创建账号' : '登录';
+    if (b) b.textContent = reg ? '注 册' : '登 录';
+    if (cw) cw.style.display = reg ? 'block' : 'none';
+    if (fg) fg.style.display = reg ? 'none' : 'block';
+    if (sw) sw.innerHTML = reg
+      ? '已有账号？<a id="iaGateSwitch">去登录</a>'
+      : '还没有账号？<a id="iaGateSwitch">立即注册</a>';
+    var a = $('iaGateSwitch');
+    if (a) a.addEventListener('click', function () { showErr(''); setMode(reg ? 'in' : 'reg'); });
+    showErr('');
+  }
+
+  /* ---------- 交互（全部中文） ---------- */
+  $('iaGateEye').addEventListener('click', function () {
+    var p = $('iaGatePwd');
+    var show = p.type === 'password';
+    p.type = show ? 'text' : 'password';
+    this.textContent = show ? '隐藏' : '显示';
+  });
+  $('iaGateForgot').addEventListener('click', function () {
+    showErr('当前使用「用户名 + 密码」登录，暂不支持找回密码，请牢记密码。');
+  });
+  $('iaGateUser').addEventListener('input', function () {
+    var v = this.value.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (v !== this.value) this.value = v;
+  });
+
+  /* 隐藏调试入口：连点底部说明 5 次，普通用户不会碰到 */
+  var taps = 0, tapTimer = null, debugShown = false;
+  $('iaGateNote').addEventListener('click', function () {
+    taps++;
+    clearTimeout(tapTimer);
+    tapTimer = setTimeout(function () { taps = 0; }, 2500);
+    if (taps >= 5) {
+      taps = 0;
+      debugShown = !debugShown;
+      var d = $('iaGateDebug');
+      d.style.display = debugShown ? 'block' : 'none';
+      var bi = $('iaGateBase');
+      if (bi) bi.value = BASE;
+    }
+  });
+  $('iaGateSrvSave').addEventListener('click', function () {
+    var b = safeBase(($('iaGateBase') || {}).value);
+    if (!b) { showErr('地址要以 https:// 开头'); return; }
+    BASE = b; setls(LS_BASE, BASE);
+    showErr('地址已保存');
+    setTimeout(function () { showErr(''); }, 1400);
+  });
+
+  /* ---------- 提交 ---------- */
+  function pwOk(p) { return /^[\x21-\x7e]{8,64}$/.test(String(p || '')); }
+  function userOk(u) { return /^[a-z0-9]{3,20}$/.test(String(u || '')); }
+
+  async function submit() {
+    var u = (($('iaGateUser').value || '').trim().toLowerCase());
+    var p = $('iaGatePwd').value || '';
+    var isReg = mode === 'reg';
+    if (isReg) {
+      if (!userOk(u)) { showErr('用户名需 3~20 位，仅限英文字母和数字'); return; }
+      if (!pwOk(p)) { showErr('密码需 8~64 位，纯英文、纯数字或符号都可以'); return; }
+      if (p !== ($('iaGateConfirm').value || '')) { showErr('两次输入的密码不一致'); return; }
+    } else {
+      if (!u || !p) { showErr('请填写用户名和密码'); return; }
+    }
+
+    var btn = $('iaGateSubmit'), old = btn.textContent;
+    btn.textContent = '请稍候…'; btn.disabled = true; showErr('');
+    var ctl = new AbortController();
+    var tm = setTimeout(function () { ctl.abort(); }, 15000);
+    try {
+      var r = await fetch(BASE + (isReg ? '/api/register' : '/api/login'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: u, password: p }),
+        signal: ctl.signal
+      });
+      var j = await r.json().catch(function () { return null; });
+      if (!r.ok || !j || !j.ok) {
+        showErr((j && j.msg) || (isReg ? '注册失败，请稍后再试' : '登录失败，用户名或密码不正确'));
+        return;
+      }
+      TOKEN = j.token; ACCOUNT = j.username || u;
+      setls(LS_TOKEN, TOKEN); setls(LS_ACCOUNT, ACCOUNT); setls(LS_BASE, BASE);
+      fire('ia-cloud-auth');
+      unlock(false);
+    } catch (e) {
+      showErr('连接服务器失败，请检查网络后重试');
+    } finally {
+      clearTimeout(tm);
+      btn.textContent = old; btn.disabled = false;
+    }
+  }
+  $('iaGateSubmit').addEventListener('click', submit);
+  $('iaGatePwd').addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(); });
+  $('iaGateConfirm').addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(); });
+  $('iaGateUser').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('iaGatePwd').focus(); });
+
+  /* 账号模块退出 / 令牌失效 → 重新锁屏 */
+  window.addEventListener('ia-cloud-logout', function () {
+    relock('登录已结束，请重新登录');
+  });
+
+  /* ---------- 启动 ---------- */
+  async function verify() {
+    var ctl = new AbortController();
+    var tm = setTimeout(function () { ctl.abort(); }, 8000);
+    try {
+      var r = await fetch(BASE + '/api/me', {
+        headers: { 'Authorization': 'Bearer ' + TOKEN }, signal: ctl.signal
+      });
+      if (r.status === 401) return 'invalid';
+      if (r.ok) return 'valid';
+      return 'offline';
+    } catch (e) { return 'offline'; }
+    finally { clearTimeout(tm); }
+  }
+
+  async function boot() {
+    setMode('in');
+    var u = $('iaGateUser');
+    if (u && ACCOUNT) u.value = ACCOUNT;
+    if (TOKEN) {
+      var v = await verify();
+      if (v === 'invalid') { relock('登录已过期，请重新登录'); return; }
+      unlock(v === 'offline');
+      return;
+    }
+    setTimeout(showForm, 900);
+  }
+  boot();
+})();
+
+</script>
 </body>
 </html>
