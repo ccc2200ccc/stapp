@@ -1,5 +1,5 @@
 {
-  "version": "99.0.26",
+  "version": "99.0.27",
   "url": "https://ccc2200ccc.github.io/stapp/index.html",
-  "notes": "内置新 Netlify 站点 precious-dango-5e35a8；探测自动跳过团队保护登录页"
+  "notes": "作品缩略图分级压缩不再丢失；云端与本机双向补图；登录后自动实时同步"
 }

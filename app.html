@@ -4336,7 +4336,7 @@ body.floats-hidden #creditFloat { display: none !important; }
     account = localStorage.getItem(LS_ACCOUNT) || '';
   } catch (e) {}
 
-  var lastFp = '', pushed = {}, suppress = false, busy = false;
+  var lastFp = '', pushed = {}, shrinkFail = {}, suppress = false, busy = false;
   var syncedOnce = false, pulling = false, syncMsg = '', cloudCount = 0;
   var fab, mask;
 
@@ -4346,7 +4346,15 @@ body.floats-hidden #creditFloat { display: none !important; }
   }
   function fp() {
     if (!hasHistory()) return 'na';
-    try { return history.length + '|' + ((history[0] && history[0].id) || ''); } catch (e) { return 'na'; }
+    try {
+      var sig = '';
+      for (var i = 0; i < history.length; i++) {
+        var h = history[i];
+        var t = (h && ((h.thumbs && h.thumbs[0]) || (h.images && h.images[0]))) ? '1' : '0';
+        sig += (h && h.id ? String(h.id).slice(-6) : '-') + t;
+      }
+      return history.length + '|' + ((history[0] && history[0].id) || '') + '|' + sig;
+    } catch (e) { return 'na'; }
   }
   function safeBase(u) {
     u = String(u || '').trim().replace(/\/+$/, '');
@@ -4397,32 +4405,55 @@ body.floats-hidden #creditFloat { display: none !important; }
     } finally { clearTimeout(timer); }
   }
 
-  /* ---------- 缩略图瘦身 ---------- */
+  /* ---------- 缩略图瘦身（99.0.27 重写） ----------
+     旧版只有一档 640px/0.72，结果超过 70000 字符就直接返回空字符串，
+     云端于是只存到文字；写实照片几乎必然超标，这就是「换设备只剩文字」的根因。
+     现在按 640→560→480→400→320→240→180 逐级降尺寸与质量，
+     直到塞得进 D1 单行上限，绝不返回空。外链/跨域失败时保留原链接兜底。 */
+  var THUMB_LIMIT = 65000;
   function shrink(src) {
     return new Promise(function (resolve) {
       try {
+        src = String(src || '');
         if (!src) return resolve('');
-        if (/^https?:\/\//i.test(src)) return resolve(String(src).slice(0, 70000));
-        if (!/^data:image\//i.test(src)) return resolve('');
+        var fallback = /^https?:\/\//i.test(src) ? src.slice(0, THUMB_LIMIT) : '';
         var im = new Image();
+        try { im.crossOrigin = 'anonymous'; } catch (e) {}
         im.onload = function () {
           try {
             var w = im.naturalWidth || im.width, h = im.naturalHeight || im.height;
-            var k = Math.min(1, 640 / Math.max(w, h));
+            if (!w || !h) return resolve(fallback);
+            var plans = [[640, .72], [560, .64], [480, .56], [400, .5], [320, .44], [240, .38], [180, .34]];
             var c = document.createElement('canvas');
-            c.width = Math.max(1, Math.round(w * k));
-            c.height = Math.max(1, Math.round(h * k));
-            c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
-            var out = c.toDataURL('image/jpeg', 0.72);
-            resolve(out.length <= 70000 ? out : '');
-          } catch (e) { resolve(''); }
+            var ctx = c.getContext('2d');
+            var out = '';
+            for (var i = 0; i < plans.length; i++) {
+              var mx = plans[i][0], q = plans[i][1];
+              var k = Math.min(1, mx / Math.max(w, h));
+              c.width = Math.max(1, Math.round(w * k));
+              c.height = Math.max(1, Math.round(h * k));
+              ctx.clearRect(0, 0, c.width, c.height);
+              ctx.drawImage(im, 0, 0, c.width, c.height);
+              out = c.toDataURL('image/jpeg', q);
+              if (out.length <= THUMB_LIMIT) return resolve(out);
+            }
+            return resolve(fallback || '');
+          } catch (e) { return resolve(fallback); }
         };
-        im.onerror = function () { resolve(''); };
+        im.onerror = function () { resolve(fallback); };
         im.src = src;
       } catch (e) { resolve(''); }
     });
   }
   function lean(h) {
+    var t = '';
+    try {
+      var c = [];
+      if (h.thumbs && h.thumbs.length) c = c.concat(h.thumbs);
+      if (h.images && h.images.length) c = c.concat(h.images);
+      c.push(h.thumb, h.img, h.url, h.src);
+      for (var i = 0; i < c.length; i++) { if (c[i]) { t = String(c[i]); break; } }
+    } catch (e) {}
     return {
       id: h.id, ts: h.ts || Date.now(),
       prompt: String(h.prompt || '').slice(0, 4000),
@@ -4430,7 +4461,7 @@ body.floats-hidden #creditFloat { display: none !important; }
       ratio: String(h.ratio || '').slice(0, 20),
       resolution: String(h.resolution || '').slice(0, 20),
       count: Number(h.count) || 1,
-      thumb: (h.thumbs && h.thumbs[0]) || (h.images && h.images[0]) || ''
+      thumb: t
     };
   }
 
@@ -4481,16 +4512,19 @@ body.floats-hidden #creditFloat { display: none !important; }
     } finally { pulling = false; }
   }
 
-  /* 增量合并：只往本机补云端没有的，绝不删本机、绝不覆盖同 id */
+  /* 增量合并（99.0.27）：只增不删，且双向补图
+     - 云端有图、本机同 id 没图 → 直接回填本机，卡片立刻显示
+     - 云端没图、本机同 id 有图 → 不标记为已上传，下一轮补传
+       （后端 upsert 本就允许「有新图覆盖空图」，旧前端却把云端已有的一律标成已传，永远补不上） */
   function merge(items, total) {
     suppress = true;
     try {
       cloudCount = total >= 0 ? total : items.length;
       if (!hasHistory()) return;
-      var byId = {}, cloudIds = {};
-      try { history.forEach(function (h) { if (h && h.id) byId[h.id] = 1; }); } catch (e) {}
-      items.forEach(function (it) { if (it && it.rid) cloudIds[it.rid] = 1; });
-      var added = 0;
+      var byId = {}, cloudIds = {}, cloudThumb = {}, localById = {};
+      try { history.forEach(function (h) { if (h && h.id) { byId[h.id] = 1; localById[h.id] = h; } }); } catch (e) {}
+      items.forEach(function (it) { if (it && it.rid) { cloudIds[it.rid] = 1; cloudThumb[it.rid] = it.thumb || ''; } });
+      var added = 0, filled = 0;
       items.forEach(function (it) {
         if (!it || !it.rid || byId[it.rid]) return;
         var t = it.thumb || '';
@@ -4499,19 +4533,36 @@ body.floats-hidden #creditFloat { display: none !important; }
           model: it.model || '', ratio: it.ratio || '', resolution: it.resolution || '4K',
           count: it.cnt || 1, thumbs: t ? [t] : [], images: t ? [t] : []
         });
-        byId[it.rid] = 1; added++;
+        byId[it.rid] = 1; localById[it.rid] = history[history.length - 1]; added++;
       });
-      if (added) {
+      // 云端有图 → 回填本机（这是手机端「只剩文字」最直接的补救）
+      items.forEach(function (it) {
+        if (!it || !it.rid || !it.thumb) return;
+        var h = localById[it.rid];
+        if (!h) return;
+        var has = (h.thumbs && h.thumbs[0]) || (h.images && h.images[0]);
+        if (has) return;
+        h.thumbs = [it.thumb]; h.images = [it.thumb]; filled++;
+      });
+      if (added || filled) {
         try { history.sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); }); } catch (e) {}
         try { if (typeof window.saveHistory === 'function') window.saveHistory(); } catch (e) {}
         try { if (typeof window.renderHistory === 'function') window.renderHistory(); } catch (e) {}
         try { if (typeof window.renderGenResult === 'function') window.renderGenResult(); } catch (e) {}
       }
-      // 只把「云端已有」的标成已上传；本机独有的留给下一轮上传，两处历史做并集
+      // 只把「云端已有且图已齐」的标成已上传；缺图的留给下一轮补传
       pushed = {};
-      try { history.forEach(function (h) { if (h && h.id && cloudIds[h.id]) pushed[h.id] = 1; }); } catch (e) {}
+      try {
+        history.forEach(function (h) {
+          if (!h || !h.id || !cloudIds[h.id]) return;
+          var localT = (h.thumbs && h.thumbs[0]) || (h.images && h.images[0]) || '';
+          if (!cloudThumb[h.id] && localT && !shrinkFail[h.id]) return;
+          pushed[h.id] = 1;
+        });
+      } catch (e) {}
       lastFp = ''; // 触发一次增量上传
-      badge('云端 ' + cloudCount + ' 条 · 本机 ' + history.length + ' 条' + (added ? ' · 新增 ' + added : ''));
+      badge('云端 ' + cloudCount + ' 条 · 本机 ' + history.length + ' 条' +
+            (added ? ' · 新增 ' + added : '') + (filled ? ' · 补回 ' + filled + ' 张图' : ''));
     } catch (e) {
       syncMsg = '合并异常（数据未改动）';
       badge(syncMsg);
@@ -4528,6 +4579,7 @@ body.floats-hidden #creditFloat { display: none !important; }
         if (!h || !h.id || pushed[h.id]) continue;
         var l = lean(h);
         l.thumb = await shrink(l.thumb);
+        if (l.thumb) { delete shrinkFail[l.id]; } else { shrinkFail[l.id] = 1; }
         todo.push(l);
       }
     } catch (e) { return 0; }
@@ -4676,7 +4728,7 @@ body.floats-hidden #creditFloat { display: none !important; }
 
       '  <div id="iaCloudUser" style="display:none;">',
       '    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:8px;">',
-      '      <button id="iaCloudSync" style="', BTN_SOLID, '">立即同步</button>',
+      '      <button id="iaCloudSync" style="', BTN_SOLID, '">立即刷新</button>',
       '      <button id="iaCloudPush" style="', BTN, '">上传本机历史</button>',
       '      <button id="iaCloudExport" style="', BTN_GRAY, '">导出我的数据</button>',
       '      <button id="iaCloudPwdToggle" style="', BTN_GRAY, '">修改密码</button>',
@@ -4787,7 +4839,7 @@ body.floats-hidden #creditFloat { display: none !important; }
     });
 
     $('iaCloudPush').addEventListener('click', async function () {
-      if (!syncedOnce) { toastMsg('请先点「立即同步」'); return; }
+      if (!syncedOnce) { toastMsg('请先点「立即刷新」'); return; }
       toastMsg('正在上传本机历史…');
       pushed = {}; lastFp = '';
       var total = 0, guard = 0;
@@ -4896,25 +4948,67 @@ body.floats-hidden #creditFloat { display: none !important; }
   });
 
   /* ---------- 启动：整体包在 try 里，失败也不影响原 APP ---------- */
+  /* 99.0.27：无缩略图时给一张简洁占位图，避免整段提示词被当成 alt 文字铺满卡片 */
+  function installPlaceholder() {
+    try {
+      var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400">' +
+        '<rect width="400" height="400" fill="#eef1f6"/>' +
+        '<circle cx="200" cy="162" r="42" fill="none" stroke="#bac3d1" stroke-width="7"/>' +
+        '<path d="M112 296l72-78 48 50 36-36 60 64" fill="none" stroke="#bac3d1" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>' +
+        '<text x="200" y="356" text-anchor="middle" font-size="20" fill="#8c96a8" font-family="sans-serif">图片待同步</text>' +
+        '</svg>';
+      var PH = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+      window.imgOf = function (h) {
+        var t = (h && ((h.thumbs && h.thumbs[0]) || (h.images && h.images[0]))) || '';
+        return t || PH;
+      };
+      var st = document.createElement('style');
+      st.id = 'iaHistImgCss';
+      st.textContent = '#historyGrid .hist-item img{font-size:0;color:transparent;background:#eef1f6;}';
+      document.head.appendChild(st);
+      try { if (typeof window.renderHistory === 'function') window.renderHistory(); } catch (e) {}
+    } catch (e) {}
+  }
+
   try {
     if (!document.body) return;
     buildUI();
+    installPlaceholder();
     renderState();
     if (token && BASE) pullFull();
+
+    // 本机变化：1.8 秒内自动上传（文字 + 缩略图）
     setInterval(tick, 1800);
+    // 尚未同步成功时快速重试，不把失败当成「用户清空」
     setInterval(function () {
       if (token && BASE && !syncedOnce && !pulling) pullFull();
-    }, 20000);
+    }, 5000);
+    // 云端变化：前台每 10 秒自动拉取，准实时，无弹窗、失败不动任何数据
+    setInterval(function () {
+      if (token && BASE && !document.hidden && !pulling && !busy) pullFull();
+    }, 10000);
+    // 计数校准
     setInterval(async function () {
       if (!token || !BASE || document.hidden) return;
       var me = await api('GET', '/api/me');
       if (me && me.ok) { cloudCount = me.cloudCount; renderState(); }
     }, 60000);
     document.addEventListener('visibilitychange', function () {
-      if (!document.hidden && token && BASE) {
-        if (syncedOnce) tick(); else pullFull();
-      }
+      if (!document.hidden && token && BASE) { pullFull(); tick(); }
     });
+    window.addEventListener('online', function () {
+      if (token && BASE) { pullFull(); tick(); }
+    });
+    // 切到「我的作品」面板时立刻拉一次
+    document.addEventListener('click', function (e) {
+      try {
+        var t = e.target && e.target.closest ? e.target.closest('[data-tab],[data-view],.nav-item,.tab-btn') : null;
+        if (!t) return;
+        var s = (t.dataset && (t.dataset.tab || t.dataset.view)) || t.textContent || '';
+        if (!/作品|history/i.test(String(s))) return;
+        setTimeout(function () { if (token && BASE && !pulling) pullFull(); }, 150);
+      } catch (e2) {}
+    }, true);
   } catch (e) {
     /* 静默降级：账号模块不可用时，APP 原有功能完全不受影响 */
   }
