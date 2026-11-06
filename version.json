@@ -1,5 +1,5 @@
 {
-  "version": "99.0.23",
+  "version": "99.0.25",
   "url": "https://ccc2200ccc.github.io/stapp/index.html",
-  "notes": "修复注册失败：诊断不再误报网络策略、改用不写库的登录探测；配合 Worker CORS 全开版使用"
+  "notes": "支持已建 Netlify 站点随机名，免改站点名；强制重新探测可达地址"
 }

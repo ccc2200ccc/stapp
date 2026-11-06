@@ -1045,6 +1045,58 @@ body.setting-open #creditFloat{opacity:0!important;transform:scale(.86)!importan
 }
 
 </style>
+
+<script>
+/* 99.0.25 服务地址自适应：部分移动网络打不开 workers.dev 时，自动改走 Netlify 代理 */
+(function () {
+  'use strict';
+  var OLD = 'https://tupian.ccc2200ccc.workers.dev';
+  var CAND = [
+    'https://inquisitive-rabanadas-77f2d8.netlify.app',
+    'https://stapp-api.netlify.app',
+    'https://stapp-api-2200.netlify.app',
+    'https://ccc2200ccc-api.netlify.app',
+    OLD
+  ];
+  var raw = window.fetch ? window.fetch.bind(window) : null;
+  if (!raw) return;
+  var KEY = 'ia_base_idx_v2', saved = -1;
+  try { saved = parseInt(localStorage.getItem(KEY), 10); } catch (e) {}
+  if (!(saved >= 0 && saved < CAND.length)) saved = -1;
+
+  function probe(i) {
+    var c = new AbortController();
+    var t = setTimeout(function () { try { c.abort(); } catch (e) {} }, 4000);
+    return raw(CAND[i] + '/ping', { cache: 'no-store', signal: c.signal })
+      .then(function (r) { clearTimeout(t); return r && r.ok ? i : -1; })
+      .catch(function () { clearTimeout(t); return -1; });
+  }
+  var ready = Promise.all(CAND.map(function (_, i) { return probe(i); }))
+    .then(function (res) {
+      var pick = -1;
+      if (saved >= 0 && res[saved] === saved) pick = saved;
+      if (pick < 0) { for (var i = 0; i < res.length; i++) { if (res[i] === i) { pick = i; break; } } }
+      /* 全部探测不到：回退直连，保持旧行为，绝不更差 */
+      if (pick < 0) pick = CAND.length - 1;
+      try { localStorage.setItem(KEY, String(pick)); } catch (e) {}
+      return pick;
+    });
+
+  window.fetch = function (input, init) {
+    var url = typeof input === 'string' ? input : (input && input.url) || '';
+    if (url.indexOf(OLD) !== 0) return raw.apply(window, arguments);
+    var rest = url.slice(OLD.length);
+    if (rest && rest.charAt(0) !== '/') return raw.apply(window, arguments);
+    return ready.then(function (i) {
+      var target = (CAND[i] || OLD) + rest;
+      if (typeof input === 'string') return raw(target, init);
+      try { return raw(new Request(target, input), init); }
+      catch (e) { return raw(target, init); }
+    });
+  };
+})();
+</script>
+
 </head>
 <body>
 <div id="flowBg" aria-hidden="true"></div>
