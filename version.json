@@ -1,5 +1,5 @@
 {
-  "version": "99.0.27",
+  "version": "99.0.28",
   "url": "https://ccc2200ccc.github.io/stapp/index.html",
-  "notes": "作品缩略图分级压缩不再丢失；云端与本机双向补图；登录后自动实时同步"
+  "notes": "词库「使用 / 骰子填入」改走 postMessage 桥接，手机 APP 内不再提示请在 APP 内使用；随机抽卡直接覆盖填入生图框"
 }

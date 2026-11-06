@@ -1314,7 +1314,7 @@ body.setting-open #creditFloat{opacity:0!important;transform:scale(.86)!importan
       <div id="plGrid" hidden></div>
 
       <iframe id="promptLibFrame"
-              src="https://ccc2200ccc.github.io/stapp/prompts/index.html?v=10"
+              src="https://ccc2200ccc.github.io/stapp/prompts/index.html?v=11"
               title="提示词库" allow="clipboard-write"
               style="flex:1 1 auto;display:block;width:100%;height:auto;min-height:0;border:0;background:transparent;border-radius:20px;"></iframe>
     </section>
@@ -3907,6 +3907,16 @@ void main(){vec3 color=texture(uField,vUv).rgb;vec2 pixel=gl_FragCoord.xy+uFrame
       w.__ljUseHooked = true;
     } catch (e) {}
   }
+
+  /* 不依赖 contentDocument：词库页被 srcdoc / sandbox / 跨源装载时，
+     直接注入 onPromptUse 会被浏览器拒绝，postMessage 仍然可用 */
+  window.addEventListener('message', function (e) {
+    var d = e.data;
+    if (!d || d.__stapp_fill !== 1 || typeof d.text !== 'string') return;
+    try { if (e.source && f.contentWindow && e.source !== f.contentWindow) return; } catch (err) {}
+    apply(d.text);
+    try { e.source.postMessage({ __stapp_fill_ack: 1 }, '*'); } catch (err2) {}
+  });
 
   f.addEventListener('load', hook);
   if (f.contentDocument && f.contentDocument.readyState === 'complete') hook();
