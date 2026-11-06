@@ -1,5 +1,5 @@
 {
-  "version": "99.0.22",
+  "version": "99.0.23",
   "url": "https://ccc2200ccc.github.io/stapp/index.html",
-  "notes": "修复注册连接失败：请求改为无预检的 text/plain；失败时显示真实 HTTP 状态并自动诊断"
+  "notes": "修复注册失败：诊断不再误报网络策略、改用不写库的登录探测；配合 Worker CORS 全开版使用"
 }

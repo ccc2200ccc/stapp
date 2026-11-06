@@ -5113,25 +5113,27 @@ body.floats-hidden #creditFloat { display: none !important; }
         var r = await fetch(url, opt2);
         var txt = await r.text().catch(function () { return ''; });
         clearTimeout(t);
-        lines.push(name + ': HTTP ' + r.status + ' ' + txt.slice(0, 160));
+        lines.push(name + ': HTTP ' + r.status + ' ' + txt.slice(0, 200));
       } catch (e2) {
-        lines.push(name + ': 浏览器拦截 / 超时（CORS 或网络策略）');
+        lines.push(name + ': 请求未送达（' + ((e2 && e2.name) || '网络错误') + '）');
       }
       put(lines.join('\n'));
     }
     await probe('GET /health', BASE + '/health');
-    await probe('POST /api/register', BASE + '/api/register', {
+    /* 用不存在的账号登录探测：只读、不写库，不会凭空多出一个测试账号 */
+    await probe('POST /api/login', BASE + '/api/login', {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
-      body: JSON.stringify({ username: 'diag1', password: '12345678' })
+      body: JSON.stringify({ username: 'zzzprobe999', password: '12345678' })
     });
     var body = lines.join('\n');
-    if (/Request denied|policy_default_denied|main-policy/i.test(body)) {
-      lines.push('结论：Cloudflare 有一条名为 main-policy 的策略拒绝了请求。请在 Cloudflare 控制台放行该 Worker（含 OPTIONS 方法），前端改代码无效。');
-    } else if (/HTTP 200/.test(body) && /ok/.test(body)) {
-      lines.push('结论：服务器可达。若仍注册失败，把上面两行截图发我。');
+    if (/HTTP 200/.test(body) && /stapp-account-v2/.test(body)) {
+      lines.push('结论：账号服务正常。若注册仍失败，把上面两行截图发我。');
+    } else if (/请求未送达/.test(body)) {
+      lines.push('请用手机浏览器直接打开 ' + BASE + '/health');
+      lines.push('地址栏访问不受跨域限制：能看到 {"ok":true} 就是跨域头问题，换 Worker 代码即可。');
     } else {
-      lines.push('结论：服务器不可达或被跨域拦截。把上面两行截图发我。');
+      lines.push('结论：服务有响应但内容不对，多半是 Worker 代码没换成最新版，请重新粘贴并 Deploy。');
     }
     put(lines.join('\n'));
   }
@@ -5171,8 +5173,8 @@ body.floats-hidden #creditFloat { display: none !important; }
       unlock(false);
     } catch (e) {
       var why = (e && e.name === 'AbortError') ? '连接超时（15 秒）'
-        : ('请求被拦截：' + (e && e.message ? e.message : '浏览器阻止了跨域请求'));
-      showErr(why + '\n服务器：' + BASE + '\n正在自动诊断…');
+        : ('请求未送达：' + (e && e.message ? e.message : '跨域被拦截'));
+      showErr(why + '\n正在自动诊断…');
       diag();
     } finally {
       clearTimeout(tm);
