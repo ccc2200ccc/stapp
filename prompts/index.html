@@ -755,7 +755,7 @@ const CONFIG = {
   LIST_PARTS: ['list.part1.json', 'list.part2.json', 'list.part3.json'],
   PROMPT_PARTS: ['prompts.part1.json', 'prompts.part2.json', 'prompts.part3.json'],
   IMG_BASE: './',
-  PAGE_SIZE: 30
+  PAGE_SIZE: 24
 };
 
 /* 水仙的大类（major）→ 页面分类按钮。按钮在数据加载后按实际大类自动生成 */
@@ -764,6 +764,7 @@ const GROUPS = ["人物写真", "动漫二次元", "古风国风", "摄影", "�
 const HIDDEN_MAJORS = [];
 
 const state = { all: [], view: [], cat: 'all', q: '', page: 1, loading: false };
+const _textIndex = new Map();   // 99.0.30：正文 id→text，后台建索引，点卡片 O(1)
 const grid = document.getElementById('grid');
 const toast = document.getElementById('toast');
 const catScroll = document.getElementById('categoryScroll');
@@ -788,53 +789,122 @@ async function getJSON(url) {
 }
 const uniq = arr => { const s = new Set(); return arr.filter(x => { const k = JSON.stringify(x); return s.has(k) ? false : s.add(k); }); };
 
+/* 99.0.30 渐进式加载：首屏只等第一片，其余后台追加。
+   旧版 Promise.all 要等最慢的那个分片才 init() 完，手机上是「整页卡住」的最大来源。 */
 async function loadList() {
-  const parts = await Promise.all(CONFIG.LIST_PARTS.map(f => getJSON(CONFIG.DATA_BASE + f)));
-  let raw = uniq(parts.flat());
-  if (!raw.length) {                      // 兜底：只有一个 list.json
-    raw = await getJSON(CONFIG.DATA_BASE + 'list.json');
+  const seen = new Set();
+  let serial = 0;
+  function feed(raw) {
+    const fresh = [];
+    (Array.isArray(raw) ? raw : []).forEach(p => {
+      if (!p) return;
+      const id = p.id != null ? p.id : ('auto_' + (serial++));
+      const key = String(id);
+      if (seen.has(key)) return;
+      seen.add(key);
+      const cats = p.categories || p.category || p.tags || [];
+      const arr = Array.isArray(cats) ? cats : String(cats).split(/[、,，/|]/);
+      const sub = Array.isArray(arr) ? arr[0] : String(arr || '');
+      const major = CAT_GROUP[sub] || (CAT_GROUP.__REST__.includes(sub) ? '其他' : '其他');
+      const img = p.img || p.image || p.cover || '';
+      let txt = p.prompt || p.text || '';
+      const isJson = typeof txt === 'string' && (txt.trim().startsWith('{') || txt.trim().startsWith('['));
+      if (isJson) { try { txt = JSON.stringify(JSON.parse(txt), null, 2); } catch (e) {} }
+      if (txt) _textIndex.set(key, String(txt));
+      fresh.push({
+        id: id,
+        title: p.title || p.name || ('提示词 #' + key),
+        major: major,
+        cat: arr.map(String),
+        source: p.source || '水仙提示词库',
+        img: /^https?:/.test(img) ? img : (img ? CONFIG.IMG_BASE + img : ''),
+        text: txt,
+        isJson: isJson,
+        likes: p.likes != null ? p.likes : null,
+        _full: !!p.prompt
+      });
+    });
+    if (!fresh.length) return;
+    Array.prototype.push.apply(state.all, fresh);
+    buildCategoryChips();
+    applyFilter(false);   // 不重置页码，已渲出来的卡片不会被打断
   }
-  state.all = raw.map((p, i) => {
-    const cats = p.categories || p.category || p.tags || [];
-    const arr = Array.isArray(cats) ? cats : String(cats).split(/[、,，/|]/);
-    const sub =Array.isArray(arr)?arr[0]:String(arr||''); const major = CAT_GROUP[sub] || (CAT_GROUP.__REST__.includes(sub)?'其他':'其他');
-    const img = p.img || p.image || p.cover || '';
-    return {
-      id: p.id != null ? p.id : i,
-      title: p.title || p.name || ('提示词 #' + (i + 1)),
-      major,
-      cat: arr.map(String),
-      source: p.source || '水仙提示词库',
-      img: /^https?:/.test(img) ? img : (img ? CONFIG.IMG_BASE + img : ''),
-      text: p.prompt || p.text || '',
-      isJson: false,
-      likes: p.likes != null ? p.likes : null,
-      _full: !!p.prompt,
-      isJson: (typeof p.text === 'string' && (p.text.trim().startsWith('{') || p.text.trim().startsWith('[')))
-    };
-    if (item.isJson) { try { item.text = JSON.stringify(JSON.parse(item.text), null, 2); } catch(e) {} }
-  });
-  buildCategoryChips();
+  const tasks = CONFIG.LIST_PARTS.map(f => getJSON(CONFIG.DATA_BASE + f).then(feed));
+  await tasks[0];                                   // 只等第一片，首屏立刻出卡片
+  if (!state.all.length) await getJSON(CONFIG.DATA_BASE + 'list.json').then(feed);
+  state.loading = false;
+  Promise.all(tasks).then(() => applyFilter(false)); // 后台补齐后重算一次计数与搜索
 }
 
 /* 正文按需加载：找到该条所在的 prompts 分片并补齐 */
+/* 99.0.30：正文优先查后台建好的 Map（O(1)）；没有才按分片加载并顺手建索引，
+   不再对 3 个 3MB 数组逐条 arr.find（手机上这是点「使用」转圈的主因）。 */
 async function ensureText(item) {
   if (item._full || item.text) { item._full = true; return item.text; }
+  const hit = _textIndex.get(String(item.id));
+  if (hit) { item.text = hit; item._full = true; return hit; }
   for (const f of CONFIG.PROMPT_PARTS) {
     const arr = await getJSON(CONFIG.DATA_BASE + f);
-    const hit = arr.find(x => String(x.id) === String(item.id));
-    if (hit && (hit.prompt || hit.text)) { item.text = hit.prompt || hit.text; item._full = true; break; }
+    (Array.isArray(arr) ? arr : []).forEach(x => {
+      if (x && x.id != null) {
+        const t = x.prompt || x.text || '';
+        if (t) _textIndex.set(String(x.id), String(t));
+      }
+    });
+    const h = _textIndex.get(String(item.id));
+    if (h) { item.text = h; item._full = true; return h; }
   }
   return item.text || '';
 }
 
+/* 后台串行预取正文：首屏渲染完再跑，逐片让出主线程，不会卡住 UI。
+   省流量 / 2G 时跳过，改为点卡片按需加载。 */
+let _textPrefetching = false;
+async function prefetchTexts() {
+  if (_textPrefetching) return;
+  try {
+    const c = navigator.connection;
+    if (c && (c.saveData || /2g/.test(c.effectiveType || ''))) return;
+  } catch (e) {}
+  _textPrefetching = true;
+  try {
+    for (const f of CONFIG.PROMPT_PARTS) {
+      const arr = await getJSON(CONFIG.DATA_BASE + f);
+      (Array.isArray(arr) ? arr : []).forEach(x => {
+        if (x && x.id != null) {
+          const t = x.prompt || x.text || '';
+          if (t) _textIndex.set(String(x.id), String(t));
+        }
+      });
+      if (state.q) applyFilter(false);   // 搜索词在时，边加载边补全结果
+      await new Promise(r => setTimeout(r, 0));
+    }
+  } catch (e) {}
+}
+function scheduleTexts() {
+  const go = () => { try { prefetchTexts(); } catch (e) {} };
+  const idle = () => {
+    if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 5000 });
+    else go();
+  };
+  setTimeout(idle, 1800);   // 先让首屏图片加载完，再后台建正文索引，避免抢手机带宽
+}
+
 function buildCategoryChips() {
   const counts = {};
-  state.all.forEach(p => { counts[p.major] = (counts[p.major] || 0) + 1; + 0; });
+  state.all.forEach(p => { counts[p.major] = (counts[p.major] || 0) + 1; });
   const majors = GROUPS.filter(g => counts[g]);
   catScroll.innerHTML =
     '<div class="category-chip active" data-cat="all">全部 ' + state.all.length + '</div>' +
     majors.map(m => '<div class="category-chip" data-cat="' + esc(m) + '">' + esc(m) + ' ' + counts[m] + '</div>').join('');
+  /* 99.0.30：渐进加载会多次重建分类条，恢复用户已选中的分类 */
+  if (state.cat !== 'all') {
+    const cur = catScroll.querySelector('.category-chip[data-cat="' + state.cat + '"]');
+    if (cur) {
+      catScroll.querySelectorAll('.category-chip').forEach(c => c.classList.remove('active'));
+      cur.classList.add('active');
+    }
+  }
 }
 
 /* ---------- 筛选 + 渲染 ---------- */
@@ -853,7 +923,7 @@ function applyFilter(reset) {
 function cardHTML(p) {
   const seed = encodeURIComponent(p.id);
   const img = p.img
-    ? '<img class="prompt-card-img" alt="' + esc(p.title) + '" src="' + esc(p.img) + '" loading="lazy" ' +
+    ? '<img class="prompt-card-img" alt="' + esc(p.title) + '" src="' + esc(p.img) + '" loading="lazy" decoding="async" fetchpriority="low" ' +
       'onload="this.parentNode.querySelector(\'.img-loading\').classList.add(\'hide\')" ' +
       'onerror="this.style.display=\'none\';this.parentNode.querySelector(\'.img-loading\').classList.add(\'hide\')" />'
     : '';
@@ -1038,9 +1108,10 @@ function showToast(msg) {
 /* ---------- 启动 ---------- */
 (async function init() {
   state.loading = true; showCount();
-  await loadList();
+  await loadList();          // 内部已渐进渲染，只等第一片
   state.loading = false;
-  applyFilter(true);
+  applyFilter(false);
+  scheduleTexts();           // 正文索引后台建，不抢首屏带宽
 })();
 </script>
 
@@ -1166,31 +1237,40 @@ document.addEventListener("DOMContentLoaded", function(){
     if(/^https?:/i.test(u) || u.indexOf('//') === 0) return u;
     return './' + u.replace(/^\.\//,'').replace(/^\/+/,'');
   }
+  /* 99.0.30：直接复用主脚本已加载的 state.all / _textIndex，
+     旧版抽卡会再加一次 3 个 list + 3 个 prompts 并发请求，手机上等于把词库重下一遍。 */
   function loadPool(){
-    if(POOL.length) return Promise.resolve(POOL);
     if(poolPromise) return poolPromise;
     var fromState = (typeof state !== 'undefined' && state && state.all && state.all.length) ? state.all : null;
     if(fromState){
-      POOL = fromState.map(function(x){
-        return { id:x.id, title:x.title||'', img:normImg(x.img), cat:(x.cat&&x.cat[0])||x.major||'', text:x.text||'' };
-      });
+      if(POOL.length !== fromState.length){
+        POOL = fromState.map(function(x){
+          return { id:x.id, title:x.title||'', img:normImg(x.img), cat:(x.cat&&x.cat[0])||x.major||'', text:x.text||'' };
+        });
+      }
       return Promise.resolve(POOL);
     }
-    poolPromise = Promise.all([1,2,3].map(function(n){
-      return fetch('./data/list.part'+n+'.json').then(function(r){ return r.ok ? r.json() : []; }).catch(function(){ return []; });
-    })).then(function(arrs){
-      arrs.forEach(function(arr){
+    poolPromise = fetch('./data/list.part1.json')
+      .then(function(r){ return r.ok ? r.json() : []; }).catch(function(){ return []; })
+      .then(function(arr){
         (Array.isArray(arr)?arr:[]).forEach(function(x){
           if(!x || x.id == null) return;
           POOL.push({ id:x.id, title:x.title||x.name||'', img:normImg(x.image||x.img||x.cover||''), cat:x.category||'', text:x.prompt||x.text||'' });
         });
+        return POOL;
       });
-      return POOL;
-    });
     return poolPromise;
   }
   function loadTexts(){
     if(textsLoaded) return Promise.resolve();
+    /* 主脚本后台建的正文索引，能直接用就不发任何请求 */
+    try {
+      if(typeof _textIndex !== 'undefined' && _textIndex.size){
+        _textIndex.forEach(function(v,k){ textCache[k]=v; });
+        textsLoaded = true;
+        return Promise.resolve();
+      }
+    } catch(e){}
     if(textsPromise) return textsPromise;
     textsPromise = Promise.all([1,2,3].map(function(n){
       return fetch('./data/prompts.part'+n+'.json').then(function(r){ return r.ok ? r.json() : []; }).catch(function(){ return []; });
