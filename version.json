@@ -1,5 +1,5 @@
 {
-  "version": "99.0.32",
+  "version": "99.0.33",
   "url": "https://ccc2200ccc.github.io/stapp/index.html",
-  "notes": "参考图修复：空 type/octet-stream 也能加、支持多张累加、生成后不清空、本地持久化"
+  "notes": "骰子正文并行落地永不空填；大图卡片新增填入按钮；设置改自定义接口/用户信息双面板阻尼切换，头像移入设置"
 }
