@@ -1234,6 +1234,9 @@ body.setting-open #creditFloat{opacity:0!important;transform:scale(.86)!importan
           </div>
           <div class="ratio-group seg-group" id="ratioGroup">
             <span class="seg-thumb" aria-hidden="true"></span>
+            <button class="ratio-btn ratio-auto" data-ratio="auto" type="button" aria-pressed="false" title="严格按选中参考图的比例生成">
+              <span class="auto-ico" aria-hidden="true">⤢</span><span>自适应</span>
+            </button>
             <button class="ratio-btn active" data-ratio="1:1" type="button" aria-pressed="true">
               <span class="shape" style="width:10px;height:10px"></span><span>1:1</span>
             </button>
@@ -1245,9 +1248,6 @@ body.setting-open #creditFloat{opacity:0!important;transform:scale(.86)!importan
             </button>
             <button class="ratio-btn" data-ratio="16:9" type="button" aria-pressed="false">
               <span class="shape" style="width:12px;height:6px"></span><span>16:9</span>
-            </button>
-            <button class="ratio-btn ratio-auto" data-ratio="auto" type="button" aria-pressed="false" title="严格按选中参考图的比例生成">
-              <span class="auto-ico" aria-hidden="true">⤢</span><span>自适应</span>
             </button>
           </div>
         </div>
@@ -6228,8 +6228,10 @@ body.floats-hidden #creditFloat { display: none !important; }
   window.callImageAPI = async function (opts) {
     var c = cfg(), key = String(c.apiKey || '').trim(), tk = token();
     var base = String(c.baseUrl || DEFAULT_UP).trim().replace(/\/+$/, '');
-    /* 没登录 / 没填 Key / 云端不可用 → 原样直连，绝不比现在更差 */
-    if (!tk || !key || !/^https:\/\//i.test(base) || typeof original !== 'function') {
+    /* 99.0.41：Worker 配了 UPSTREAM_KEY 时前端不再带 Key，也不再要求本地填 Key */
+    var serverKey = !!window.__stappServerKey;
+    /* 没登录 / 没填 Key（且服务端也没配）/ 云端不可用 → 原样直连 */
+    if (!tk || (!key && !serverKey) || !/^https:\/\//i.test(base) || typeof original !== 'function') {
       return original.apply(this, arguments);
     }
     var id = rid();
@@ -6243,9 +6245,12 @@ body.floats-hidden #creditFloat { display: none !important; }
       ratio: p.ratio || '', resolution: '4K', cnt: opts.count
     };
     var sub = await post('/api/gen', {
-      rid: id, base: base, key: key,
+      rid: id, base: base, key: serverKey ? '' : key,
       path: '/images/generations', body: body, meta: meta
     });
+    /* 账本明确拒绝（余额不足 / 服务异常）时绝不回退直连，
+       否则用户能绕过预扣直接调上游，这是整合必须堵住的口子。 */
+    if (sub && sub.credits) throw new Error(sub.msg || '平台积分不足');
     if (!sub || !sub.ok) return original.apply(this, arguments);
     if (sub.status === 'done' && sub.images && sub.images.length) return toLocal(normalize(sub.images));
     if (sub.status === 'failed') throw new Error('云端生成失败：' + (sub.msg || '上游未返回结果'));
@@ -6562,7 +6567,7 @@ body.floats-hidden #creditFloat { display: none !important; }
 </script>
 
 <style id="autoRatioStyle">
-/* 99.0.39 画面比例「自适应」：五等分滑块 + 参考图绿点 */
+/* 99.0.40 画面比例「自适应」置顶：五等分滑块 + 参考图绿点；滑块按 active 索引定位，与按钮顺序无关 */
 #ratioGroup .seg-thumb{width:calc((100% - 6px)/5)!important}
 #ratioGroup .ratio-btn[data-ratio="auto"] .auto-ico{font-size:12px;line-height:1;opacity:.9;flex:0 0 auto}
 @media(max-width:380px){
@@ -6581,7 +6586,7 @@ body.floats-hidden #creditFloat { display: none !important; }
 </style>
 <script>
 /* ============================================================
- * 99.0.39 画面比例「自适应」
+ * 99.0.40 画面比例「自适应」（按钮置顶；逻辑与 99.0.39 完全一致）
  *  - 严格按「选中的那张参考图」的宽高比生成，绝不拉伸 / 裁切到预设比例
  *  - 比例按原图宽高化简（gcd），4K 尺寸按该比生成整数 WxH
  *  - 上传后默认选第一张；点绿点切到下一张，点其它灰点直接选那张
@@ -6813,6 +6818,108 @@ body.floats-hidden #creditFloat { display: none !important; }
   setInterval(function () {
     try { if (strip.querySelector('.ref-thumb') && !strip.querySelector('.ref-cell')) renderDots(); } catch (e) {}
   }, 1200);
+})();
+</script>
+
+
+<script>
+/* ============================================================
+ * 99.0.41 平台积分整合（前端侧，只做两件事）
+ *  1) 「用户信息」面板追加平台积分余额卡片（只读）
+ *  2) 探测服务端是否已配 UPSTREAM_KEY：配了则 /api/gen 不再携带 Key
+ *  账本未接入 / 接口不通时全部静默，APP 其余行为与 99.0.40 完全一致。
+ *  地址写死 OLD，99.0.26 的全局 fetch 拦截器会自动改写到 Netlify。
+ * ============================================================ */
+(function () {
+  'use strict';
+  var CLOUD = 'https://tupian.ccc2200ccc.workers.dev';
+  var LS_TOKEN = 'ia_cloud_token_v1';
+  var tries = 0, busy = false;
+  function raw(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
+  function $(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function post(path, obj) {
+    var ctl = new AbortController();
+    var tm = setTimeout(function () { try { ctl.abort(); } catch (e) {} }, 12000);
+    return fetch(CLOUD + path, {
+      method: 'POST', mode: 'cors', cache: 'no-store',
+      headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+      body: JSON.stringify(Object.assign({ token: raw(LS_TOKEN) }, obj || {})),
+      signal: ctl.signal
+    }).then(function (r) { return r.json().catch(function () { return null; }); })
+      .catch(function () { return null; })
+      .then(function (j) { clearTimeout(tm); return j || null; });
+  }
+  function mount() {
+    var pane = $('setPaneUser');
+    if (!pane) return false;
+    if ($('stappCreditsCard')) return true;
+    var card = document.createElement('div');
+    card.id = 'stappCreditsCard';
+    card.className = 'set-card';
+    card.style.cssText = 'margin-top:14px';
+    card.innerHTML =
+      '<div class="set-model-title" style="margin-bottom:6px"><span>平台积分</span>' +
+      '<span class="set-badge" id="stappCreditsBadge">—</span></div>' +
+      '<p class="set-model-sub" id="stappCreditsSub" style="line-height:1.6">正在读取…</p>' +
+      '<button class="set-row-btn" id="stappCreditsRefresh" type="button" style="margin-top:10px">' +
+      '<span>刷新余额</span></button>';
+    pane.appendChild(card);
+    var btn = $('stappCreditsRefresh');
+    if (btn) btn.addEventListener('click', function () { refresh(true); });
+    return true;
+  }
+  function paint(j) {
+    var badge = $('stappCreditsBadge'), sub = $('stappCreditsSub');
+    if (!badge || !sub) return;
+    if (!j || !j.ok) { badge.textContent = '未连接'; sub.textContent = '积分服务暂不可用，稍后自动重试'; return; }
+    window.__stappServerKey = !!j.serverKey;
+    window.__stappCreditsOn = !!j.creditsOn;
+    if (!j.creditsOn) {
+      badge.textContent = '未接入';
+      sub.textContent = '平台积分账本尚未接入，当前生成不计费。';
+      return;
+    }
+    if (j.balance == null) {
+      badge.textContent = '读取失败';
+      sub.textContent = esc(j.msg || '积分服务暂不可用') + '（不影响已登录功能）';
+      return;
+    }
+    badge.textContent = Number(j.balance) + ' 分';
+    sub.textContent = '冻结中 ' + Number(j.frozen || 0) + ' 分 · 1 分 = ¥0.01。生成前预扣，出图成功后结算，失败或超时自动退回。';
+  }
+  async function refresh(manual) {
+    if (busy) return;
+    busy = true;
+    try {
+      if (!raw(LS_TOKEN)) { paint({ ok: true, creditsOn: false, serverKey: false, balance: null }); return; }
+      var j = await post('/api/credits', {});
+      paint(j);
+      if (manual && j && j.ok && j.creditsOn && j.balance != null) {
+        try { if (typeof window.toast === 'function') window.toast('平台积分：' + Number(j.balance) + ' 分', 1800); } catch (e) {}
+      }
+    } finally { busy = false; }
+  }
+  function boot() {
+    if (!mount()) { if (tries++ < 120) setTimeout(boot, 150); return; }
+    refresh(false);
+  }
+  setTimeout(boot, 900);
+  setInterval(function () { if (!document.hidden) refresh(false); }, 30000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) refresh(false); });
+  window.addEventListener('online', function () { refresh(false); });
+  window.addEventListener('focus', function () { refresh(false); });
+  try {
+    window.addEventListener('ia-cloud-login', function () { setTimeout(function () { refresh(false); }, 400); });
+    window.addEventListener('ia-cloud-logout', function () {
+      window.__stappServerKey = false;
+      paint({ ok: true, creditsOn: false, serverKey: false, balance: null });
+    });
+  } catch (e) {}
 })();
 </script>
 
