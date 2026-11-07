@@ -1177,10 +1177,14 @@ document.addEventListener("DOMContentLoaded", function(){
   var POOL = [], poolPromise = null;
   var textCache = {}, textsLoaded = false, textsPromise = null;
   var curId = null;
+  /* 99.0.33：分片并行落地，谁先回来谁先用；失败可重试；兜底保证永远能填入 */
+  var partState = { 1:0, 2:0, 3:0 }, partPromises = {}, readyIds = {};
+  var curItem = null, curPre = null, curStamp = 0;
   var mask = document.getElementById('diceMask');
   var body = document.getElementById('diceBody');
   var fab  = document.getElementById('diceFab');
   var toastTimer = null;
+  setTimeout(function(){ try { ensureParts(); } catch(e){} }, 900);
 
   /* ---- 轻提示（替代 alert，不阻塞、不会卡死） ---- */
   function toast(msg){
@@ -1213,7 +1217,7 @@ document.addEventListener("DOMContentLoaded", function(){
     return ok;
   }
   function safeCopy(txt){
-    if(!txt){ toast('提示词还在加载，稍候再点'); return; }
+    if(!txt){ toast('请先抽一条提示词'); return; }
     if(fallbackCopy(txt)){ toast('已复制'); return; }
     if(navigator.clipboard && navigator.clipboard.writeText){
       var settled = false;
@@ -1261,29 +1265,89 @@ document.addEventListener("DOMContentLoaded", function(){
       });
     return poolPromise;
   }
-  function loadTexts(){
-    if(textsLoaded) return Promise.resolve();
-    /* 主脚本后台建的正文索引，能直接用就不发任何请求 */
-    try {
-      if(typeof _textIndex !== 'undefined' && _textIndex.size){
-        _textIndex.forEach(function(v,k){ textCache[k]=v; });
-        textsLoaded = true;
-        return Promise.resolve();
+  /* ---------- 正文分片：并行、逐片落地、超时可重试 ---------- */
+  function partUrl(n){ return './data/prompts.part' + n + '.json'; }
+  function ingestPart(arr, n){
+    var count = 0;
+    (Array.isArray(arr) ? arr : []).forEach(function(x){
+      if(x && x.id != null){
+        var t = x.prompt || x.text || '';
+        if(t){
+          var k = String(x.id);
+          textCache[k] = String(t);
+          readyIds[k] = n;
+          count++;
+          try { if(typeof _textIndex !== 'undefined' && _textIndex.set) _textIndex.set(k, String(t)); } catch(e){}
+        }
       }
-    } catch(e){}
-    if(textsPromise) return textsPromise;
-    textsPromise = Promise.all([1,2,3].map(function(n){
-      return fetch('./data/prompts.part'+n+'.json').then(function(r){ return r.ok ? r.json() : []; }).catch(function(){ return []; });
-    })).then(function(arrs){
-      arrs.forEach(function(arr){
-        (Array.isArray(arr)?arr:[]).forEach(function(x){
-          if(x && x.id != null){ var t = x.prompt || x.text || ''; if(t) textCache[String(x.id)] = String(t); }
-        });
-      });
-      textsLoaded = true;
     });
-    return textsPromise;
+    if(count) partState[n] = 2;
+    refreshCurrent();
+    return count;
   }
+  function fetchPart(n){
+    if(partState[n] === 2) return Promise.resolve(true);
+    if(partPromises[n]) return partPromises[n];
+    partState[n] = 1;
+    var url = partUrl(n), cached = null;
+    try { cached = (typeof _jsonCache !== 'undefined') ? _jsonCache[url] : null; } catch(e){}
+    if(cached && cached.length){ ingestPart(cached, n); partState[n] = 2; return Promise.resolve(true); }
+    partPromises[n] = new Promise(function(resolve){
+      var ctl = null;
+      try { ctl = ('AbortController' in window) ? new AbortController() : null; } catch(e){}
+      var tm = setTimeout(function(){ try{ ctl && ctl.abort(); }catch(e){} }, 15000);
+      var opts = { cache:'force-cache' };
+      try { if(ctl) opts.signal = ctl.signal; } catch(e){}
+      fetch(url, opts).then(function(r){
+        if(!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      }).then(function(d){
+        var arr = Array.isArray(d) ? d : (d.list || d.data || d.prompts || []);
+        try { if(typeof _jsonCache !== 'undefined') _jsonCache[url] = arr; } catch(e){}
+        ingestPart(arr, n);
+        partState[n] = 2;      // 空片也算完成，避免无意义重试
+        clearTimeout(tm);
+        resolve(true);
+      }).catch(function(){
+        clearTimeout(tm);
+        partState[n] = 3;      // 失败：下次可重试
+        partPromises[n] = null;
+        resolve(false);
+      });
+    });
+    return partPromises[n];
+  }
+  function ensureParts(){ return [1,2,3].map(function(n){ return fetchPart(n); }); }
+
+  function pretty(t){
+    if(t && (t.charAt(0)==='{' || t.charAt(0)==='[')){
+      try { return JSON.stringify(JSON.parse(t), null, 2); } catch(e){}
+    }
+    return t;
+  }
+  function fallbackText(item){
+    var t = String(item && item.title ? item.title : '').trim();
+    var c = String(item && item.cat ? item.cat : '').trim();
+    var a = [];
+    if(t) a.push(t);
+    if(c && c !== t) a.push(c + '风格');
+    a.push('高清细节，光影自然，构图讲究，画面干净，主体突出，质感细腻');
+    return a.join('，');
+  }
+  function refreshCurrent(){
+    if(!curItem || !curPre || curPre.__stamp !== curStamp) return;
+    var real = curItem.text || textCache[String(curItem.id)] || '';
+    if(real){
+      curPre.textContent = pretty(real);
+      window._lastDiceText = real;
+      window._lastDiceIsFallback = false;
+      var note = document.getElementById('diceNote');
+      if(note) note.textContent = '正文已就绪 · 填入会覆盖生图框';
+      var rb = document.getElementById('diceRetry');
+      if(rb) rb.style.display = 'none';
+    }
+  }
+
   function pretty(t){
     if(t && (t.charAt(0)==='{' || t.charAt(0)==='[')){
       try { return JSON.stringify(JSON.parse(t), null, 2); } catch(e){}
@@ -1292,9 +1356,10 @@ document.addEventListener("DOMContentLoaded", function(){
   }
 
   function render(item, total){
-    if(!item) return;
+    if(!item || !body) return;
+    curItem = item;
     curId = String(item.id);
-    if(!body) return;
+    curStamp++;
 
     body.classList.remove('swap');
     void body.offsetWidth;
@@ -1321,24 +1386,35 @@ document.addEventListener("DOMContentLoaded", function(){
     frame.style.cssText = 'max-height:34vh;overflow-y:auto;scrollbar-width:thin;padding:10px 12px;border-radius:14px;background:rgba(0,0,0,0.24);border:0.5px solid rgba(255,255,255,0.14);';
     var pre = document.createElement('div');
     pre.style.cssText = 'white-space:pre-wrap;word-break:break-word;font-size:12.5px;line-height:1.7;color:rgba(255,255,255,0.92);';
+    pre.__stamp = curStamp;
     frame.appendChild(pre);
     body.appendChild(frame);
+    curPre = pre;
 
-    var txt = item.text || textCache[curId] || '';
+    var real = item.text || textCache[curId] || '';
+    var txt = real || fallbackText(item);
     window._lastDiceText = txt;
-    pre.textContent = txt ? pretty(txt) : '正在加载提示词…';
+    window._lastDiceIsFallback = !real;
+    pre.textContent = pretty(txt);
+
+    var note = document.createElement('div');
+    note.id = 'diceNote';
+    note.style.cssText = 'font-size:10.5px;color:rgba(255,255,255,0.55);margin-top:8px;line-height:1.6;';
+    note.textContent = real ? '正文已就绪 · 填入会覆盖生图框' : '正文仍在加载，已备好基础提示词，现在就能填入';
+    body.appendChild(note);
+
+    var retry = document.createElement('button');
+    retry.id = 'diceRetry';
+    retry.type = 'button';
+    retry.textContent = '重新加载正文';
+    retry.style.cssText = 'margin-top:8px;padding:7px 12px;border:0.5px solid rgba(74,222,222,0.55);background:rgba(74,222,222,0.14);color:#c9fbfb;border-radius:11px;font-size:11px;cursor:pointer;display:' + (real ? 'none' : 'inline-block') + ';';
+    retry.onclick = function(){ ensureParts(); toast('正在重新加载正文…'); };
+    body.appendChild(retry);
 
     var titleEl = document.getElementById('diceTitle');
     if(titleEl) titleEl.textContent = '随机抽卡 · 全库 ' + total + ' 条';
 
-    if(!txt){
-      loadTexts().then(function(){
-        if(curId !== String(item.id)) return;
-        var full = textCache[curId] || '';
-        window._lastDiceText = full;
-        pre.textContent = full ? pretty(full) : '该条暂无提示词正文';
-      });
-    }
+    ensureParts();   // 后台并行，任一分片落地后自动把正文替换进来
   }
 
   function openMask(){
@@ -1352,9 +1428,12 @@ document.addEventListener("DOMContentLoaded", function(){
   function randomOne(){
     loadPool().then(function(pool){
       if(!pool.length){ toast('词库加载失败'); return; }
-      var idx = Math.floor(Math.random() * pool.length);
-      if(pool.length > 1 && String(pool[idx].id) === String(curId)) idx = (idx + 1) % pool.length;
-      render(pool[idx], pool.length);
+      var ready = [];
+      for(var i=0;i<pool.length;i++){ if(readyIds[String(pool[i].id)]) ready.push(pool[i]); }
+      var use = ready.length > 3 ? ready : pool;   // 至少 4 条正文就绪才优先，保证随机性
+      var idx = Math.floor(Math.random() * use.length);
+      if(use.length > 1 && String(use[idx].id) === String(curId)) idx = (idx + 1) % use.length;
+      render(use[idx], pool.length);
       openMask();
     });
   }
@@ -1421,11 +1500,12 @@ document.addEventListener("DOMContentLoaded", function(){
   var closeBtn = document.getElementById('diceClose');
   if(closeBtn) closeBtn.onclick = function(){ if(mask) mask.classList.remove('show'); };
   if(mask) mask.onclick = function(e){ if(e.target.id === 'diceMask') this.classList.remove('show'); };
-  /* 填入：与卡片「使用」走同一通道，覆盖填入生图提示词框 */
+  /* 填入：永不空填。正文没下载完也能用标题生成的基础提示词 */
   var fillBtn = document.getElementById('diceCopy');
   if(fillBtn) fillBtn.onclick = function(){
-    var txt = window._lastDiceText || '';
-    if(!txt){ toast('提示词还在加载，稍候再点'); return; }
+    var txt = window._lastDiceText || (curItem ? fallbackText(curItem) : '');
+    if(!txt){ toast('词库还没准备好，稍候再试'); return; }
+    var fb = !!window._lastDiceIsFallback;
     if(typeof window.usePrompt === 'function') window.usePrompt(txt);
     else if(typeof window.onPromptUse === 'function') window.onPromptUse(txt);
     else {
@@ -1433,8 +1513,9 @@ document.addEventListener("DOMContentLoaded", function(){
       catch(e){ toast('填入失败，请点「复制」'); return; }
     }
     if(mask) mask.classList.remove('show');
-    toast('已带入生图框');
+    toast(fb ? '已填入基础提示词（正文仍在加载）' : '已带入生图框');
   };
+
 });
 </script>
 
