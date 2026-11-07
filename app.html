@@ -6084,5 +6084,133 @@ body.floats-hidden #creditFloat { display: none !important; }
 })();
 </script>
 
+
+<script>
+/* ============================================================
+ * 99.0.34 云端托管生图
+ * 只覆盖 callImageAPI：原 runJob / 本地历史 / 进度条 / 参考图一行不改。
+ * 下单后由云端等待，手机锁屏、切后台、被杀都不影响结果落库。
+ * rid 取已持久化的 job.id，中断恢复带上同一个编号 → 云端去重，不重复扣费。
+ * ============================================================ */
+(function () {
+  'use strict';
+  var CLOUD = 'https://tupian.ccc2200ccc.workers.dev'; // 99.0.26 自适应会自动改写到可用地址
+  var LS_TOKEN = 'ia_cloud_token_v1', LS_CFG = 'ia_cfg_v6', LS_PENDING = 'ia_pending_gen_v1';
+  var DEFAULT_UP = 'https://api.image2pro.top/v1';
+
+  function raw(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function J(k, d) { try { var v = raw(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }
+  function cfg() { return J(LS_CFG, { baseUrl: '', apiKey: '' }) || {}; }
+  function token() { return raw(LS_TOKEN) || ''; }
+  function nap(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+  function post(path, obj) {
+    var ctl = new AbortController();
+    var tm = setTimeout(function () { try { ctl.abort(); } catch (e) {} }, 25000);
+    return fetch(CLOUD + path, {
+      method: 'POST', mode: 'cors', cache: 'no-store',
+      headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+      body: JSON.stringify(Object.assign({ token: token() }, obj || {})),
+      signal: ctl.signal
+    }).then(function (r) { return r.json().catch(function () { return null; }); })
+      .catch(function () { return null; })
+      .then(function (j) { clearTimeout(tm); return j || { ok: false, msg: '网络异常' }; });
+  }
+  function rid() {
+    var p = J(LS_PENDING, null);
+    if (p && p.id) return String(p.id);
+    return 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  }
+  function shrink(dataUrl, maxW, q) {
+    return new Promise(function (res) {
+      try {
+        var im = new Image();
+        im.onload = function () {
+          try {
+            var w = im.width, h = im.height;
+            if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
+            var cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+            cv.getContext('2d').drawImage(im, 0, 0, w, h);
+            res(cv.toDataURL('image/jpeg', q || 0.82));
+          } catch (e) { res(dataUrl); }
+        };
+        im.onerror = function () { res(dataUrl); };
+        im.src = dataUrl;
+      } catch (e) { res(dataUrl); }
+    });
+  }
+  async function prepareRefs(refs) {
+    var arr = (refs || []).filter(Boolean);
+    if (!arr.length) return [];
+    if (arr.join('').length < 4 * 1024 * 1024) return arr;
+    var out = [];
+    for (var i = 0; i < arr.length; i++) out.push(await shrink(arr[i], 1024, 0.82));
+    return out;
+  }
+  function normalize(list) {
+    return (list || []).map(function (s) {
+      s = String(s || '');
+      if (/^data:image\//i.test(s) || /^https?:\/\//i.test(s)) return s;
+      return 'data:image/png;base64,' + s.replace(/\s/g, '');
+    }).filter(Boolean);
+  }
+  function toLocal(list) {
+    return Promise.all(list.map(function (s) {
+      if (!/^https?:/i.test(s)) return Promise.resolve(s);
+      return fetch(s, { mode: 'cors' }).then(function (r) { return r.ok ? r.blob() : null; })
+        .then(function (b) {
+          if (!b) return s;
+          return new Promise(function (res) {
+            var fr = new FileReader();
+            fr.onload = function () { res(fr.result); };
+            fr.onerror = function () { res(s); };
+            fr.readAsDataURL(b);
+          });
+        }).catch(function () { return s; });
+    }));
+  }
+
+  var original = window.callImageAPI;
+  window.callImageAPI = async function (opts) {
+    var c = cfg(), key = String(c.apiKey || '').trim(), tk = token();
+    var base = String(c.baseUrl || DEFAULT_UP).trim().replace(/\/+$/, '');
+    /* 没登录 / 没填 Key / 云端不可用 → 原样直连，绝不比现在更差 */
+    if (!tk || !key || !/^https:\/\//i.test(base) || typeof original !== 'function') {
+      return original.apply(this, arguments);
+    }
+    var id = rid();
+    var refs = await prepareRefs(opts.ref);
+    var body = { model: opts.model, prompt: opts.prompt, n: opts.count, size: opts.size };
+    if (refs.length === 1) body.image = refs[0];
+    else if (refs.length > 1) body.image = refs;
+    var p = J(LS_PENDING, null) || {};
+    var meta = {
+      prompt: opts.prompt, model: opts.model,
+      ratio: p.ratio || '', resolution: '4K', cnt: opts.count
+    };
+    var sub = await post('/api/gen', {
+      rid: id, base: base, key: key,
+      path: '/images/generations', body: body, meta: meta
+    });
+    if (!sub || !sub.ok) return original.apply(this, arguments);
+    if (sub.status === 'done' && sub.images && sub.images.length) return toLocal(normalize(sub.images));
+    if (sub.status === 'failed') throw new Error('云端生成失败：' + (sub.msg || '上游未返回结果'));
+
+    /* 一直等云端：页面被冻结就挂起，回来继续；APP 被杀也不怕，
+       结果已写进云端历史，10 秒自动同步会把它带回来。 */
+    for (;;) {
+      await nap(3000);
+      var st = await post('/api/gen/status', { rid: id });
+      if (st && st.ok && st.status === 'done' && st.images && st.images.length) {
+        return toLocal(normalize(st.images));
+      }
+      if (st && st.ok && st.status === 'failed') {
+        throw new Error('云端生成失败：' + (st.msg || '上游未返回结果'));
+      }
+    }
+  };
+})();
+</script>
+
 </body>
 </html>
