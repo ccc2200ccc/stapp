@@ -1143,7 +1143,9 @@ body.setting-open #creditFloat{opacity:0!important;transform:scale(.86)!importan
 #imgViewer .vc-primary-row{display:flex!important;gap:8px!important;margin-bottom:10px!important}
 #imgViewer .vc-fill-btn{flex:1 1 auto!important;min-width:0!important;height:42px!important;border:0!important;border-radius:13px!important;background:linear-gradient(135deg,#37c9c0,#2aa79f)!important;color:#fff!important;font-size:12.5px!important;font-weight:700!important;letter-spacing:.03em!important;cursor:pointer!important;box-shadow:0 6px 18px rgba(42,167,159,.34)!important;transition:transform .22s cubic-bezier(.22,1.3,.36,1),filter .22s!important}
 #imgViewer .vc-fill-btn:active{transform:scale(.97)!important;filter:brightness(1.08)!important}
-#imgViewer .vc-copy-btn{flex:0 0 auto!important;height:42px!important;padding:0 15px!important;border:1px solid rgba(255,255,255,.22)!important;border-radius:13px!important;background:rgba(255,255,255,.08)!important;color:#e8f2ef!important;font-size:12px!important;font-weight:600!important;cursor:pointer!important}
+#imgViewer .vc-ref-btn{flex:0 0 auto!important;height:42px!important;padding:0 15px!important;border:1px solid rgba(55,201,192,.55)!important;border-radius:13px!important;background:rgba(55,201,192,.16)!important;color:#c8f7f1!important;font-size:12px!important;font-weight:700!important;cursor:pointer!important;white-space:nowrap!important;transition:transform .22s cubic-bezier(.22,1.3,.36,1),filter .22s,background .22s!important}
+#imgViewer .vc-ref-btn:active{transform:scale(.96)!important;filter:brightness(1.12)!important}
+#imgViewer .vc-ref-btn:disabled{opacity:.62!important;cursor:default!important}
 #imgViewer .viewer-card-actions{display:flex!important;flex-wrap:nowrap!important;align-items:center!important;justify-content:center!important;gap:8px!important}
 #imgViewer .viewer-card-actions .v-icon-btn,#imgViewer .viewer-card-actions .v-nav-btn{width:40px!important;min-width:40px!important;height:40px!important;flex:0 0 40px!important;margin:0!important;border-color:rgba(255,255,255,.2)!important;background:rgba(255,255,255,.08)!important;color:#fff!important}
 #imgViewer .viewer-card-actions .v-nav-btn{font-size:22px!important}
@@ -1154,7 +1156,7 @@ body.setting-open #creditFloat{opacity:0!important;transform:scale(.86)!importan
   #imgViewer .viewer-card-actions{gap:6px!important}
   #imgViewer .viewer-card-actions .v-icon-btn,#imgViewer .viewer-card-actions .v-nav-btn{width:36px!important;min-width:36px!important;height:36px!important;flex-basis:36px!important}
   #imgViewer .viewer-card-actions .v-action-btn{height:36px!important;min-width:56px!important;padding:0 10px!important}
-  #imgViewer .vc-fill-btn,#imgViewer .vc-copy-btn{height:38px!important}
+  #imgViewer .vc-fill-btn,#imgViewer .vc-ref-btn{height:38px!important}
 }
 </style>
 
@@ -1536,7 +1538,7 @@ body.setting-open #creditFloat{opacity:0!important;transform:scale(.86)!importan
     <div class="viewer-card-meta"><span id="viewerModel"></span><span id="viewerRatio"></span><span id="viewerTime"></span></div>
     <div class="vc-primary-row">
       <button class="vc-fill-btn" id="viewerFillBtn" type="button">✎ 填入生图框</button>
-      <button class="vc-copy-btn" id="viewerCopyBtn" type="button">复制提示词</button>
+      <button class="vc-ref-btn" id="viewerRefBtn" type="button">＋ 加入参考图</button>
     </div>
     <div class="viewer-card-actions">
       <button class="v-nav-btn" id="viewerPrev" type="button" aria-label="上一张">‹</button>
@@ -6047,13 +6049,58 @@ body.floats-hidden #creditFloat { display: none !important; }
     say('已填入生图框');
   });
 
-  var copyBtn = $('viewerCopyBtn');
-  if (copyBtn) copyBtn.addEventListener('click', function (e) {
+  /* 99.0.35：大图卡片「复制提示词」改为「加入参考图」 */
+  function viewerSrc() {
+    try { if (viewerImages && viewerImages.length) return viewerImages[viewerIndex] || ''; } catch (e) {}
+    var im = $('viewerImg');
+    return im ? (im.getAttribute('src') || '') : '';
+  }
+  function viewerSrcToRefFile(src) {
+    return new Promise(function (resolve) {
+      if (!src) { resolve(null); return; }
+      function wrap(u8, mime, name) {
+        try { resolve(new File([u8], name, { type: mime })); return; } catch (e) {}
+        try { var b = new Blob([u8], { type: mime }); b.name = name; resolve(b); return; } catch (e) {}
+        resolve(null);
+      }
+      function fromDataURL(data) {
+        try {
+          var comma = data.indexOf(',');
+          if (comma < 0 || data.indexOf('data:image') !== 0) { resolve(null); return; }
+          var mime = (data.slice(0, comma).match(/:([\w\/+-]+);/) || [])[1] || 'image/png';
+          var bin = atob(data.slice(comma + 1));
+          var u8 = new Uint8Array(bin.length);
+          for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+          wrap(u8, mime, 'history-ref.' + (/png/i.test(mime) ? 'png' : 'jpg'));
+        } catch (e) { resolve(null); }
+      }
+      if (/^data:image\//i.test(src)) { fromDataURL(src); return; }
+      fetch(src).then(function (r) { return r.blob(); }).then(function (blob) {
+        var fr = new FileReader();
+        fr.onload = function () { fromDataURL(String(fr.result || '')); };
+        fr.onerror = function () { resolve(null); };
+        try { fr.readAsDataURL(blob); } catch (e) { resolve(null); }
+      }).catch(function () { resolve(null); });
+    });
+  }
+  var refBtn = $('viewerRefBtn');
+  if (refBtn) refBtn.addEventListener('click', async function (e) {
     e.stopPropagation();
-    var it = currentItem();
-    var p = (it && it.prompt) ? it.prompt : '';
-    if (!p) { say('这条作品没有记录提示词'); return; }
-    try { copyText(p); } catch (err) {}
+    if (refBtn.disabled) return;
+    var src = viewerSrc();
+    if (!src) { say('这张图暂时无法读取，请先下载后添加'); return; }
+    var adder = window.addRefFiles || (typeof addRefFiles === 'function' ? addRefFiles : null);
+    if (!adder) { say('参考图功能未就绪，请刷新页面重试'); return; }
+    refBtn.disabled = true;
+    refBtn.textContent = '处理中…';
+    var file = await viewerSrcToRefFile(src);
+    if (!file) {
+      say('这张图无法直接加入，请先用「下载」保存到相册再添加', 3200);
+    } else {
+      try { await adder([file]); } catch (err) { say('加入失败，请重试', 2600); }
+    }
+    refBtn.disabled = false;
+    refBtn.textContent = '＋ 加入参考图';
   });
 
   var moreBtn = $('viewerMoreBtn');
@@ -6209,6 +6256,198 @@ body.floats-hidden #creditFloat { display: none !important; }
       }
     }
   };
+})();
+</script>
+
+
+<script>
+/* ============================================================
+ * 99.0.36 原图层
+ *  - 本机原图（接口返回的原始字节）持久化到 IndexedDB，刷新/重启不再只剩 1280px 缩略图
+ *  - 大图查看、首页画布、下载一律优先取原图；列表卡片仍用缩略图保证流畅
+ *  - 锁屏/云端托管生成的图：从 Worker 的 gen_jobs 按需补领原始图，任意设备都能拿回
+ *  - 不绑卡、不建 R2、不改 D1 结构、不动同步协议；失败一律静默回退，绝不更差
+ * ============================================================ */
+(function () {
+  'use strict';
+  var DB_NAME = 'ia_full_v1', STORE = 'imgs', VER = 1;
+  var CLOUD = 'https://tupian.ccc2200ccc.workers.dev'; /* 99.0.26 拦截器会自动改写到可达地址 */
+  var LS_TOK = 'ia_cloud_token_v1', LS_CLAIM = 'ia_full_claimed_v1';
+  var dbp = null, mem = {}, saved = {}, claimed = {};
+  try { claimed = JSON.parse(localStorage.getItem(LS_CLAIM) || '{}') || {}; } catch (e) { claimed = {}; }
+  function saveClaim() { try { localStorage.setItem(LS_CLAIM, JSON.stringify(claimed)); } catch (e) {} }
+
+  function openDB() {
+    if (dbp) return dbp;
+    dbp = new Promise(function (res) {
+      try {
+        var q = indexedDB.open(DB_NAME, VER);
+        q.onupgradeneeded = function () { var d = q.result; if (!d.objectStoreNames.contains(STORE)) d.createObjectStore(STORE); };
+        q.onsuccess = function () { res(q.result); };
+        q.onerror = function () { res(null); };
+        q.onblocked = function () { res(null); };
+      } catch (e) { res(null); }
+    });
+    return dbp;
+  }
+  function key(id, idx) { return String(id) + '#' + String(idx); }
+  function put(id, idx, s) {
+    if (!s || typeof s !== 'string') return Promise.resolve();
+    var k = key(id, idx); mem[k] = s;
+    if (saved[k] === s.length) return Promise.resolve();
+    saved[k] = s.length;
+    return openDB().then(function (d) {
+      if (!d) return;
+      try { var t = d.transaction(STORE, 'readwrite'); t.objectStore(STORE).put(s, k); } catch (e) {}
+    });
+  }
+  function get(id, idx) {
+    var k = key(id, idx);
+    if (mem[k]) return Promise.resolve(mem[k]);
+    return openDB().then(function (d) {
+      if (!d) return '';
+      return new Promise(function (res) {
+        try {
+          var r = d.transaction(STORE, 'readonly').objectStore(STORE).get(k);
+          r.onsuccess = function () { var v = typeof r.result === 'string' ? r.result : ''; if (v) mem[k] = v; res(v); };
+          r.onerror = function () { res(''); };
+        } catch (e) { res(''); }
+      });
+    });
+  }
+  function isFull(s) { return typeof s === 'string' && s.length > 200000; }
+  function extOf(s) {
+    var m = /^data:image\/([\w+-]+)/i.exec(String(s || ''));
+    if (!m) return 'png';
+    var e = m[1].toLowerCase(); return e === 'jpeg' ? 'jpg' : (e === 'svg+xml' ? 'svg' : e);
+  }
+
+  /* --- 本机：每次写历史时把内存里的原图顺手存进 IndexedDB --- */
+  function capture() {
+    var list = (typeof history !== 'undefined' && Array.isArray(history)) ? history : [];
+    for (var i = 0; i < list.length && i < 40; i++) {
+      var h = list[i]; if (!h || !h.id) continue;
+      var arr = Array.isArray(h.images) ? h.images : [];
+      for (var j = 0; j < arr.length && j < 8; j++) {
+        if (isFull(arr[j])) put(h.id, j, arr[j]);
+      }
+    }
+  }
+  if (typeof window.saveHistory === 'function') {
+    var oSave = window.saveHistory;
+    window.saveHistory = function () { var r = oSave.apply(this, arguments); setTimeout(capture, 0); return r; };
+  }
+  setTimeout(capture, 1200);
+
+  /* --- 大图查看：打开后异步升级成原图 --- */
+  var upSeq = 0;
+  async function upgradeViewer() {
+    var id = (typeof viewerItemId !== 'undefined') ? viewerItemId : null;
+    if (!id || typeof viewerImages === 'undefined' || !viewerImages.length) return;
+    var seq = ++upSeq, changed = false;
+    for (var i = 0; i < viewerImages.length && i < 8; i++) {
+      var full = await get(id, i);
+      if (seq !== upSeq) return;                 /* 用户已翻页/关闭，放弃这次结果 */
+      if (full && full !== viewerImages[i]) { viewerImages[i] = full; changed = true; }
+    }
+    if (!changed || seq !== upSeq) return;
+    var v = document.getElementById('imgViewer');
+    if (v && v.classList.contains('show') && typeof window.showViewerImage === 'function') window.showViewerImage();
+  }
+  if (typeof window.openViewer === 'function') {
+    var oOpen = window.openViewer;
+    window.openViewer = function () { var r = oOpen.apply(this, arguments); setTimeout(upgradeViewer, 0); return r; };
+  }
+  /* 翻页后也升级 */
+  if (typeof window.stepViewer === 'function') {
+    var oStep = window.stepViewer;
+    window.stepViewer = function () { var r = oStep.apply(this, arguments); setTimeout(upgradeViewer, 0); return r; };
+  }
+
+  /* --- 首页画布：预览也用原图 --- */
+  if (typeof window.syncCanvas === 'function') {
+    var oCanvas = window.syncCanvas;
+    window.syncCanvas = function (item) {
+      var r = oCanvas.apply(this, arguments);
+      try {
+        if (item && item.id) get(item.id, 0).then(function (full) {
+          if (!full) return;
+          var im = document.getElementById('canvasImage');
+          if (im && (!im.dataset.id || im.dataset.id === String(item.id))) im.src = full;
+        });
+      } catch (e) {}
+      return r;
+    };
+  }
+
+  /* --- 下载：优先原图，按真实格式给扩展名 --- */
+  if (typeof window.downloadImg === 'function') {
+    var oDl = window.downloadImg;
+    window.downloadImg = function (src, name) {
+      var id = null, idx = 0;
+      try {
+        if (typeof viewerItemId !== 'undefined' && viewerItemId &&
+            typeof viewerIndex !== 'undefined' && typeof viewerImages !== 'undefined' &&
+            viewerImages[viewerIndex] === src) { id = viewerItemId; idx = viewerIndex; }
+      } catch (e) {}
+      if (!id) {
+        var m = /^ai-(.+)-(\d+)\.(?:png|jpe?g|webp)$/i.exec(String(name || ''));
+        if (m) { id = m[1]; idx = Math.max(0, parseInt(m[2], 10) - 1); }
+      }
+      if (!id) return oDl(src, name);
+      get(id, idx).then(function (full) {
+        var use = full || src;
+        var base = String(name || 'ai').replace(/\.(png|jpe?g|webp)$/i, '');
+        oDl(use, base + '.' + extOf(use));
+      });
+    };
+  }
+
+  /* --- 云端补领：锁屏/换设备也能拿回上游原始图 --- */
+  function post(path, obj) {
+    var ctl = new AbortController();
+    var tm = setTimeout(function () { try { ctl.abort(); } catch (e) {} }, 30000);
+    return fetch(CLOUD + path, {
+      method: 'POST', mode: 'cors', cache: 'no-store',
+      headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+      body: JSON.stringify(Object.assign({ token: (function () { try { return localStorage.getItem(LS_TOK) || ''; } catch (e) { return ''; } })() }, obj || {})),
+      signal: ctl.signal
+    }).then(function (r) { return r.json().catch(function () { return null; }); })
+      .catch(function () { return null; })
+      .then(function (j) { clearTimeout(tm); return j || { ok: false }; });
+  }
+  var claiming = false;
+  async function claim() {
+    if (claiming) return;
+    var tk = ''; try { tk = localStorage.getItem(LS_TOK) || ''; } catch (e) {}
+    if (!tk) return;
+    claiming = true;
+    try {
+      var li = await post('/api/gen/original', {});
+      if (!li || !li.ok || !Array.isArray(li.rids)) return;
+      var done = 0;
+      for (var i = 0; i < li.rids.length && done < 3; i++) {
+        var rid = li.rids[i];
+        if (!rid || claimed[rid]) continue;
+        var has = await get(rid, 0);
+        if (has) { claimed[rid] = 1; saveClaim(); continue; }
+        var r = await post('/api/gen/original', { rid: rid });
+        if (r && r.ok && r.images && r.images.length) {
+          for (var j = 0; j < r.images.length && j < 8; j++) await put(rid, j, r.images[j]);
+          claimed[rid] = 1; saveClaim(); done++;
+          if (typeof viewerItemId !== 'undefined' && viewerItemId === rid) upgradeViewer();
+          try { if (typeof window.renderGenResult === 'function') window.renderGenResult(); } catch (e) {}
+        } else {
+          claimed[rid] = 1; saveClaim();   /* 没原图就不反复试，换账号/清缓存会重试 */
+        }
+      }
+    } finally { claiming = false; }
+  }
+  setTimeout(claim, 4000);
+  setInterval(claim, 15000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) setTimeout(claim, 800); });
+  window.addEventListener('ia-cloud-login', function () { claimed = {}; saveClaim(); setTimeout(claim, 1000); });
+  window.addEventListener('ia-cloud-logout', function () { claimed = {}; saveClaim(); });
 })();
 </script>
 
