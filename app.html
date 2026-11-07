@@ -1246,6 +1246,9 @@ body.setting-open #creditFloat{opacity:0!important;transform:scale(.86)!importan
             <button class="ratio-btn" data-ratio="16:9" type="button" aria-pressed="false">
               <span class="shape" style="width:12px;height:6px"></span><span>16:9</span>
             </button>
+            <button class="ratio-btn ratio-auto" data-ratio="auto" type="button" aria-pressed="false" title="严格按选中参考图的比例生成">
+              <span class="auto-ico" aria-hidden="true">⤢</span><span>自适应</span>
+            </button>
           </div>
         </div>
 
@@ -1523,6 +1526,10 @@ body.setting-open #creditFloat{opacity:0!important;transform:scale(.86)!importan
   <div class="viewer-stage" id="viewerStage">
     <img id="viewerImg" alt="">
   </div>
+  <button class="viewer-panel-toggle" id="viewerPanelToggle" type="button" aria-expanded="false" aria-label="展开详情卡片" aria-controls="viewerCard">
+    <svg class="vpt-chev" viewBox="0 0 48 48" aria-hidden="true"><path d="M10 30 L24 16 L38 30"/></svg>
+    <span class="vpt-label" id="viewerPanelToggleLabel">详情</span>
+  </button>
   <div class="viewer-card" id="viewerCard">
     <div class="vc-head">
       <div class="vc-title"><span class="vc-dot" aria-hidden="true"></span>作品详情</div>
@@ -6448,6 +6455,364 @@ body.floats-hidden #creditFloat { display: none !important; }
   document.addEventListener('visibilitychange', function () { if (!document.hidden) setTimeout(claim, 800); });
   window.addEventListener('ia-cloud-login', function () { claimed = {}; saveClaim(); setTimeout(claim, 1000); });
   window.addEventListener('ia-cloud-logout', function () { claimed = {}; saveClaim(); });
+})();
+</script>
+
+<style>
+/* ---------- 99.0.37 大图详情：默认沉底隐藏，中央呼吸箭头展开/收起 ---------- */
+#imgViewer{overflow:hidden!important}
+#imgViewer .viewer-card{
+  transform:translateY(calc(100% + 40px))!important;
+  opacity:0!important;
+  pointer-events:none!important;
+  transition:transform .56s cubic-bezier(.22,1,.36,1),opacity .34s ease!important;
+  will-change:transform;
+}
+#imgViewer.panel-open .viewer-card{
+  transform:translateY(0)!important;
+  opacity:1!important;
+  pointer-events:auto!important;
+}
+#imgViewer .viewer-stage{
+  padding-bottom:92px!important;
+  transition:padding-bottom .56s cubic-bezier(.22,1,.36,1)!important;
+}
+#imgViewer.panel-open .viewer-stage{padding-bottom:214px!important}
+#imgViewer .viewer-panel-toggle{
+  position:absolute;z-index:7;left:50%;
+  bottom:calc(18px + env(safe-area-inset-bottom, 0px));
+  width:84px;height:84px;margin:0;padding:0;
+  transform:translateX(-50%);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
+  border:1px solid rgba(255,255,255,.62);border-radius:50%;
+  background:radial-gradient(circle at 50% 28%,rgba(255,255,255,.34),rgba(255,255,255,.10));
+  backdrop-filter:blur(18px) saturate(150%);-webkit-backdrop-filter:blur(18px) saturate(150%);
+  box-shadow:0 12px 34px rgba(0,0,0,.30),inset 0 1px 0 rgba(255,255,255,.6);
+  color:#fff;font:inherit;cursor:pointer;pointer-events:auto;
+  touch-action:manipulation;user-select:none;-webkit-tap-highlight-color:transparent;
+  animation:vptBreath 2.7s ease-in-out infinite;
+  transition:bottom .56s cubic-bezier(.22,1,.36,1),background .3s ease,box-shadow .3s ease,border-color .3s ease;
+}
+@keyframes vptBreath{0%,100%{opacity:.5}50%{opacity:1}}
+#imgViewer .viewer-panel-toggle:active{transform:translateX(-50%) scale(.93)}
+#imgViewer .vpt-chev{
+  width:36px;height:36px;display:block;
+  fill:none;stroke:currentColor;stroke-width:4.2;stroke-linecap:round;stroke-linejoin:round;
+  filter:drop-shadow(0 2px 6px rgba(0,0,0,.28));
+  transition:transform .5s cubic-bezier(.22,1,.36,1);
+}
+#imgViewer .vpt-label{font-size:10px;letter-spacing:.16em;opacity:.9;line-height:1}
+/* 99.0.38：展开态按钮外观与隐藏态「详情」按钮完全一致，仅位置上移到卡片上方；箭头旋转与文案由 JS/下方规则负责 */
+#imgViewer.panel-open .viewer-panel-toggle{
+  bottom:calc(var(--vc-h, 220px) + 16px);
+}
+#imgViewer.panel-open .vpt-chev{transform:rotate(180deg)}
+@media(max-width:760px){
+  #imgViewer .viewer-stage{padding:12px 8px 84px!important}
+  #imgViewer.panel-open .viewer-stage{padding:12px 8px 168px!important}
+}
+@media(max-width:520px){
+  #imgViewer .viewer-panel-toggle{width:70px;height:70px;bottom:calc(14px + env(safe-area-inset-bottom, 0px))}
+  #imgViewer .vpt-chev{width:30px;height:30px}
+  #imgViewer.panel-open .viewer-panel-toggle{bottom:calc(var(--vc-h, 200px) + 12px)}
+}
+@media(prefers-reduced-motion:reduce){
+  #imgViewer .viewer-panel-toggle{animation:none;opacity:1}
+  #imgViewer .viewer-card,#imgViewer .viewer-stage,#imgViewer .vpt-chev,#imgViewer .viewer-panel-toggle{transition-duration:.01ms!important}
+}
+</style>
+<script>
+/* 99.0.37 大图详情卡片：默认沉底隐藏，中央呼吸箭头展开/收起 */
+(function () {
+  var viewer = document.getElementById('imgViewer');
+  var card = document.getElementById('viewerCard');
+  var toggle = document.getElementById('viewerPanelToggle');
+  var label = document.getElementById('viewerPanelToggleLabel');
+  if (!viewer || !card || !toggle) return;
+
+  function syncHeight() {
+    viewer.style.setProperty('--vc-h', (card.offsetHeight || 220) + 'px');
+  }
+  function setPanel(open) {
+    viewer.classList.toggle('panel-open', !!open);
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    toggle.setAttribute('aria-label', open ? '收起详情卡片' : '展开详情卡片');
+    if (label) label.textContent = open ? '收起' : '详情';
+    syncHeight();
+  }
+  toggle.addEventListener('click', function (e) {
+    e.stopPropagation();
+    setPanel(!viewer.classList.contains('panel-open'));
+  });
+  toggle.addEventListener('dblclick', function (e) { e.stopPropagation(); });
+  if (typeof ResizeObserver === 'function') {
+    try { new ResizeObserver(syncHeight).observe(card); } catch (err) {}
+  }
+  window.addEventListener('resize', syncHeight);
+  if (typeof window.openViewer === 'function') {
+    var prevOpen = window.openViewer;
+    window.openViewer = function () {
+      var result = prevOpen.apply(this, arguments);
+      setPanel(false);
+      return result;
+    };
+  }
+  setPanel(false);
+})();
+</script>
+
+<style id="autoRatioStyle">
+/* 99.0.39 画面比例「自适应」：五等分滑块 + 参考图绿点 */
+#ratioGroup .seg-thumb{width:calc((100% - 6px)/5)!important}
+#ratioGroup .ratio-btn[data-ratio="auto"] .auto-ico{font-size:12px;line-height:1;opacity:.9;flex:0 0 auto}
+@media(max-width:380px){
+  #ratioGroup .ratio-btn{font-size:10px!important;gap:2px!important}
+  #ratioGroup .ratio-btn .shape{display:none!important}
+  #ratioGroup .ratio-btn[data-ratio="auto"] .auto-ico{font-size:10px}
+}
+.ref-cell{display:flex!important;flex-direction:column;align-items:center;flex:0 0 auto;width:58px;gap:5px}
+.ref-cell>.ref-thumb{width:58px;height:58px;flex:0 0 auto}
+.ref-dot{width:10px;height:10px;min-height:10px;padding:0;margin:0;border:1.5px solid rgba(60,60,67,.16);border-radius:50%;background:transparent;display:block;cursor:pointer;opacity:.34;transition:transform .18s ease,box-shadow .22s ease,background .22s ease,opacity .22s ease}
+.ref-dot.on{opacity:1;background:#34c759;border-color:#2bad50;box-shadow:0 0 0 3px rgba(52,199,89,.16),0 2px 7px rgba(52,199,89,.34);animation:refDotPulse 2.2s ease-in-out infinite}
+.ref-dot:active{transform:scale(.82)}
+@keyframes refDotPulse{0%,100%{box-shadow:0 0 0 3px rgba(52,199,89,.14),0 2px 7px rgba(52,199,89,.30)}50%{box-shadow:0 0 0 5px rgba(52,199,89,.22),0 2px 11px rgba(52,199,89,.46)}}
+@media(prefers-reduced-motion:reduce){.ref-dot.on{animation:none}}
+.canvas-stage.auto-ratio{aspect-ratio:var(--auto-ratio,1/1)}
+</style>
+<script>
+/* ============================================================
+ * 99.0.39 画面比例「自适应」
+ *  - 严格按「选中的那张参考图」的宽高比生成，绝不拉伸 / 裁切到预设比例
+ *  - 比例按原图宽高化简（gcd），4K 尺寸按该比生成整数 WxH
+ *  - 上传后默认选第一张；点绿点切到下一张，点其它灰点直接选那张
+ *  - 只改比例与绿点：参考图仍全部随下单发出，云端托管 / 自动同步 / 原图层零改动
+ * ============================================================ */
+(function () {
+  'use strict';
+  var KEY = 'stapp_auto_ratio_v39';
+  var group = document.getElementById('ratioGroup');
+  var strip = document.getElementById('refPreview');
+  var canvasTag = document.getElementById('canvasRatio');
+  var stage = document.getElementById('canvasStage');
+  if (!group || !strip) return;
+
+  var autoMode = false, sel = 0, lastFixed = '1:1', label = '', rw = 1, rh = 1;
+  var dimCache = {}, saved = {};
+  try { saved = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { saved = {}; }
+  function say(t, ms) { try { toast(t, ms || 2200); } catch (e) {} }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify({ auto: autoMode, sel: sel, last: lastFixed })); } catch (e) {}
+  }
+  function gcd(a, b) { while (b) { var t = a % b; a = b; b = t; } return a || 1; }
+  function refs() { try { return refImages; } catch (e) { return []; } }
+  function setCurrent(r) { try { currentRatio = r; } catch (e) {} }
+  function fixedLabel() { try { return currentRatio; } catch (e) { return lastFixed; } }
+  function registerRatio(lbl, w, h, size) { try { RATIOS[lbl] = { w: w, h: h, size: size }; } catch (e) {} }
+  function hasFixed(r) { try { return !!RATIOS[r]; } catch (e) { return false; } }
+
+  function measure(src) {
+    var s = String(src || '');
+    var k = s.length + '|' + s.slice(0, 72) + '|' + s.slice(-40);
+    if (dimCache[k]) return Promise.resolve(dimCache[k]);
+    return new Promise(function (res) {
+      var im = new Image();
+      im.onload = function () {
+        var d = { w: im.naturalWidth || im.width, h: im.naturalHeight || im.height };
+        dimCache[k] = d; res(d);
+      };
+      im.onerror = function () { res(null); };
+      im.src = s;
+    });
+  }
+
+  function paint(active) {
+    try {
+      document.querySelectorAll('#ratioGroup .ratio-btn').forEach(function (b) {
+        var on = b.getAttribute('data-ratio') === active;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+      moveSegThumb(group);
+    } catch (e) {}
+  }
+  function paintCanvas() {
+    if (canvasTag) canvasTag.textContent = (autoMode && label)
+      ? '自适应 · ' + label + ' · 图' + (sel + 1) + '/' + refs().length + ' · 4K'
+      : (fixedLabel() + ' · 4K');
+    if (stage) {
+      if (autoMode && label) { stage.style.setProperty('--auto-ratio', rw + '/' + rh); stage.classList.add('auto-ratio'); }
+      else { stage.style.removeProperty('--auto-ratio'); stage.classList.remove('auto-ratio'); }
+    }
+  }
+
+  /* 核心：读选中参考图的真实像素 → 化简比 → 注册进 RATIOS，buildJob 直接取到精确 size */
+  function applyAuto() {
+    if (!autoMode) return;
+    var list = refs();
+    if (!list.length) { exitAuto(); return; }
+    if (sel >= list.length) sel = 0;
+    if (sel < 0) sel = 0;
+    measure(list[sel]).then(function (d) {
+      if (!autoMode) return;
+      if (!d || !d.w || !d.h) { say('第 ' + (sel + 1) + ' 张参考图尺寸读取失败，比例保持上次结果'); return; }
+      var g = gcd(d.w, d.h);
+      rw = Math.max(1, Math.round(d.w / g));
+      rh = Math.max(1, Math.round(d.h / g));
+      label = rw + ':' + rh;
+      var MAXS = 4096, W, H;
+      if (rw >= rh) { W = MAXS; H = Math.max(1, Math.round(MAXS * rh / rw)); }
+      else { H = MAXS; W = Math.max(1, Math.round(MAXS * rw / rh)); }
+      registerRatio(label, rw, rh, W + 'x' + H);
+      setCurrent(label);
+      paint('auto');
+      paintCanvas();
+      renderDots();
+      save();
+    });
+  }
+  function exitAuto() {
+    autoMode = false; label = '';
+    try { setRatio(lastFixed); } catch (e) { setCurrent(lastFixed); paint(lastFixed); }
+    paintCanvas();
+    renderDots();
+    save();
+  }
+
+  /* 参考图缩略条：每张包一层 cell，下方挂小圆点；仅「自适应」模式下标绿 */
+  function renderDots() {
+    var el = strip;
+    if (!el) return;
+    var thumbs = Array.prototype.slice.call(el.querySelectorAll('.ref-thumb'));
+    thumbs.forEach(function (t, i) {
+      if (t.parentNode && t.parentNode.classList && t.parentNode.classList.contains('ref-cell')) return;
+      var cell = document.createElement('div');
+      cell.className = 'ref-cell';
+      t.parentNode.insertBefore(cell, t);
+      cell.appendChild(t);
+      var dot = document.createElement('button');
+      dot.type = 'button';
+      dot.className = 'ref-dot';
+      dot.dataset.index = String(i);
+      dot.setAttribute('aria-label', '按此参考图比例生成');
+      cell.appendChild(dot);
+    });
+    Array.prototype.slice.call(el.querySelectorAll('.ref-cell')).forEach(function (c, i) {
+      var d = c.querySelector('.ref-dot');
+      if (!d) return;
+      d.dataset.index = String(i);
+      var on = autoMode && i === sel;
+      d.classList.toggle('on', on);
+      d.setAttribute('aria-pressed', on ? 'true' : 'false');
+      d.setAttribute('aria-label', on
+        ? ('当前按第 ' + (i + 1) + ' 张比例，点此切到下一张')
+        : ('按第 ' + (i + 1) + ' 张参考图的比例'));
+    });
+  }
+
+  /* 包装三个全局入口，原有逻辑一行不改 */
+  var origRender = window.renderRefStrip;
+  if (typeof origRender === 'function') {
+    window.renderRefStrip = function () {
+      var r = origRender.apply(this, arguments);
+      try { renderDots(); } catch (e) {}
+      return r;
+    };
+  }
+  var origAdd = window.addRefFiles;
+  if (typeof origAdd === 'function') {
+    window.addRefFiles = function () {
+      var p = origAdd.apply(this, arguments);
+      return Promise.resolve(p).then(function (r) {
+        sel = 0;                                  /* 上传之后默认选第一张 */
+        if (autoMode) applyAuto(); else renderDots();
+        save();
+        return r;
+      });
+    };
+  }
+  var origRemove = window.removeRefAt;
+  if (typeof origRemove === 'function') {
+    window.removeRefAt = function (i) {
+      var r = origRemove.apply(this, arguments);
+      var n = refs().length;
+      if (!n) { sel = 0; exitAuto(); }
+      else {
+        if (i < sel) sel--;
+        if (sel >= n) sel = n - 1;
+        if (sel < 0) sel = 0;
+        if (autoMode) applyAuto(); else renderDots();
+      }
+      save();
+      return r;
+    };
+  }
+  var origClear = window.clearRef;
+  if (typeof origClear === 'function') {
+    window.clearRef = function () {
+      var r = origClear.apply(this, arguments);
+      sel = 0; exitAuto();
+      return r;
+    };
+  }
+
+  /* 捕获阶段拦下「自适应」，不让原 setRatio 把非标准比例判成无效 */
+  group.addEventListener('click', function (e) {
+    var b = e.target && e.target.closest && e.target.closest('.ratio-btn');
+    if (!b || b.getAttribute('data-ratio') !== 'auto') return;
+    e.stopPropagation(); e.preventDefault();
+    if (!refs().length) { say('请先添加参考图，再点「自适应」'); return; }
+    autoMode = true; sel = 0;
+    paint('auto');
+    applyAuto();
+    save();
+  }, true);
+  /* 点任何固定比例 → 退出自适应，回到该固定比例 */
+  group.addEventListener('click', function (e) {
+    var b = e.target && e.target.closest && e.target.closest('.ratio-btn');
+    if (!b) return;
+    var r = b.getAttribute('data-ratio');
+    if (!r || r === 'auto') return;
+    autoMode = false; label = '';
+    if (hasFixed(r)) lastFixed = r;
+    paint(r);
+    paintCanvas();
+    renderDots();
+    save();
+  }, false);
+  /* 绿点：点当前绿点依次切下一张；点其它灰点直接选那张 */
+  strip.addEventListener('click', function (e) {
+    var d = e.target && e.target.closest && e.target.closest('.ref-dot');
+    if (!d) return;
+    e.stopPropagation(); e.preventDefault();
+    if (!autoMode) { say('请先点「自适应」'); return; }
+    var n = refs().length;
+    if (!n) return;
+    var i = parseInt(d.dataset.index, 10);
+    if (isNaN(i) || i < 0 || i >= n) return;
+    if (i === sel) {
+      if (n < 2) { say('只有一张参考图'); return; }
+      sel = (sel + 1) % n;
+    } else sel = i;
+    say('已按第 ' + (sel + 1) + '/' + n + ' 张参考图的比例生成');
+    applyAuto();
+    save();
+  }, true);
+
+  /* 刷新 / 重载后恢复：仍是自适应 + 上次选中的那张 */
+  try { if (saved.last && hasFixed(saved.last)) lastFixed = saved.last; } catch (e) {}
+  var n0 = refs().length;
+  if (saved.auto && n0) {
+    autoMode = true;
+    var s0 = parseInt(saved.sel, 10);
+    sel = isNaN(s0) ? 0 : Math.min(Math.max(0, s0), n0 - 1);
+    paint('auto');
+    applyAuto();
+  } else {
+    renderDots();
+  }
+  setInterval(function () {
+    try { if (strip.querySelector('.ref-thumb') && !strip.querySelector('.ref-cell')) renderDots(); } catch (e) {}
+  }, 1200);
 })();
 </script>
 
