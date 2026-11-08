@@ -6226,9 +6226,11 @@ body.floats-hidden #creditFloat { display: none !important; }
 
   var original = window.callImageAPI;
   window.callImageAPI = async function (opts) {
-    var c = cfg(), key = String(c.apiKey || '').trim(), tk = token();
-    var base = String(c.baseUrl || DEFAULT_UP).trim().replace(/\/+$/, '');
-    /* 99.0.41：Worker 配了 UPSTREAM_KEY 时前端不再带 Key，也不再要求本地填 Key */
+    var c = cfg(), tk = token();
+    /* 99.0.43 真实用户模式：平台分是唯一计费口径，接口地址/Key 不再由用户感知 */
+    var platform = !!window.__stappPlatformMode;
+    var key = (platform && !!window.__stappServerKey) ? '' : String(c.apiKey || '').trim();
+    var base = platform ? DEFAULT_UP : String(c.baseUrl || DEFAULT_UP).trim().replace(/\/+$/, '');
     var serverKey = !!window.__stappServerKey;
     /* 没登录 / 没填 Key（且服务端也没配）/ 云端不可用 → 原样直连 */
     if (!tk || (!key && !serverKey) || !/^https:\/\//i.test(base) || typeof original !== 'function') {
@@ -6250,7 +6252,12 @@ body.floats-hidden #creditFloat { display: none !important; }
     });
     /* 账本明确拒绝（余额不足 / 服务异常）时绝不回退直连，
        否则用户能绕过预扣直接调上游，这是整合必须堵住的口子。 */
-    if (sub && sub.credits) throw new Error(sub.msg || '平台积分不足');
+    if (sub && sub.credits) {
+      try { if (window.__stappPlatformMode && typeof window.__stappFocusRedeem === 'function') window.__stappFocusRedeem(); } catch (e) {}
+      throw new Error(window.__stappPlatformMode
+        ? '积分不足，请在「设置 → 账户与积分」输入兑换码'
+        : (sub.msg || '平台积分不足'));
+    }
     if (!sub || !sub.ok) return original.apply(this, arguments);
     if (sub.status === 'done' && sub.images && sub.images.length) return toLocal(normalize(sub.images));
     if (sub.status === 'failed') throw new Error('云端生成失败：' + (sub.msg || '上游未返回结果'));
@@ -6824,9 +6831,10 @@ body.floats-hidden #creditFloat { display: none !important; }
 
 <script>
 /* ============================================================
- * 99.0.41 平台积分整合（前端侧，只做两件事）
- *  1) 「用户信息」面板追加平台积分余额卡片（只读）
+ * 99.0.42 平台积分整合（真实兑付）
+ *  1) 「用户信息」面板追加平台积分余额卡片 + 兑换码输入框
  *  2) 探测服务端是否已配 UPSTREAM_KEY：配了则 /api/gen 不再携带 Key
+ *  3) 显示主站可兑付额度（防超卖开关 / 余额同步状态）
  *  账本未接入 / 接口不通时全部静默，APP 其余行为与 99.0.40 完全一致。
  *  地址写死 OLD，99.0.26 的全局 fetch 拦截器会自动改写到 Netlify。
  * ============================================================ */
@@ -6866,31 +6874,88 @@ body.floats-hidden #creditFloat { display: none !important; }
       '<div class="set-model-title" style="margin-bottom:6px"><span>平台积分</span>' +
       '<span class="set-badge" id="stappCreditsBadge">—</span></div>' +
       '<p class="set-model-sub" id="stappCreditsSub" style="line-height:1.6">正在读取…</p>' +
-      '<button class="set-row-btn" id="stappCreditsRefresh" type="button" style="margin-top:10px">' +
+      '<p class="set-model-sub" id="stappCreditsCap" style="line-height:1.6;margin:6px 0 0;opacity:.72;font-size:11px"></p>' +
+      '<div style="display:flex;gap:8px;margin-top:10px">' +
+      '<input id="stappCreditsCode" type="text" placeholder="输入兑换码" autocomplete="off" spellcheck="false" ' +
+      'style="flex:1;min-width:0;padding:9px 11px;border-radius:9px;border:1px solid rgba(128,140,160,.32);' +
+      'background:rgba(128,140,160,.09);color:inherit;font-size:13px;outline:none">' +
+      '<button class="set-row-btn" id="stappCreditsRedeem" type="button" ' +
+      'style="flex:0 0 auto;margin:0;padding:9px 15px"><span>兑换</span></button>' +
+      '</div>' +
+      '<button class="set-row-btn" id="stappCreditsRefresh" type="button" style="margin-top:8px">' +
       '<span>刷新余额</span></button>';
     pane.appendChild(card);
     var btn = $('stappCreditsRefresh');
     if (btn) btn.addEventListener('click', function () { refresh(true); });
+    var rb = $('stappCreditsRedeem');
+    if (rb) rb.addEventListener('click', function () { redeem(); });
+    var inp = $('stappCreditsCode');
+    if (inp) inp.addEventListener('keydown', function (e) {
+      if (e && e.key === 'Enter') { e.preventDefault(); redeem(); }
+    });
     return true;
   }
+  function toast(msg) {
+    try { if (typeof window.toast === 'function') window.toast(msg, 2200); } catch (e) {}
+  }
+  function setCap(txt) { var c = $('stappCreditsCap'); if (c) c.textContent = txt || ''; }
   function paint(j) {
     var badge = $('stappCreditsBadge'), sub = $('stappCreditsSub');
     if (!badge || !sub) return;
+    setCap('');
     if (!j || !j.ok) { badge.textContent = '未连接'; sub.textContent = '积分服务暂不可用，稍后自动重试'; return; }
     window.__stappServerKey = !!j.serverKey;
     window.__stappCreditsOn = !!j.creditsOn;
+    var pm = !!window.__stappPlatformMode;
     if (!j.creditsOn) {
-      badge.textContent = '未接入';
-      sub.textContent = '平台积分账本尚未接入，当前生成不计费。';
+      badge.textContent = pm ? '准备中' : '未接入';
+      sub.textContent = pm ? '积分服务正在准备中，请稍后再试。' : '平台积分账本尚未接入，当前生成不计费。';
       return;
     }
     if (j.balance == null) {
-      badge.textContent = '读取失败';
-      sub.textContent = esc(j.msg || '积分服务暂不可用') + '（不影响已登录功能）';
+      badge.textContent = pm ? '暂时没读到' : '读取失败';
+      sub.textContent = pm ? '请下拉刷新或稍后重试，作品不会丢失。'
+                           : esc(j.msg || '积分服务暂不可用') + '（不影响已登录功能）';
       return;
     }
     badge.textContent = Number(j.balance) + ' 分';
+    if (pm) {
+      /* 终端用户只看到「能用什么、怎么扣」，上游成本 / 防超卖 / 预扣结算留在管理台 */
+      sub.textContent = '可用于生成作品。每次生成先冻结积分，成功才扣除；失败或超时自动退回，不会白扣。';
+      setCap('');
+      return;
+    }
     sub.textContent = '冻结中 ' + Number(j.frozen || 0) + ' 分 · 1 分 = ¥0.01。生成前预扣，出图成功后结算，失败或超时自动退回。';
+    var c = j.capacity || null;
+    if (c && c.upstreamReal != null) {
+      setCap('主站可兑付 ' + Number(c.upstreamReal).toFixed(2) + ' 上游积分 · '
+        + (c.guardOn ? '防超卖已开启' : '防超卖已关闭') + ' · 额度不足时不会扣平台分');
+    } else if (c && c.guardOn) {
+      setCap('防超卖已开启 · 主站余额待同步（下次生成自动校准）');
+    }
+  }
+  async function redeem() {
+    var inp = $('stappCreditsCode'), rb = $('stappCreditsRedeem');
+    if (!inp || !rb || rb.disabled) return;
+    var code = String(inp.value || '').trim();
+    if (!code) { toast('请输入兑换码'); return; }
+    if (!raw(LS_TOKEN)) { toast('请先登录'); return; }
+    rb.disabled = true;
+    var oldTxt = rb.textContent;
+    rb.textContent = '兑换中…';
+    try {
+      var j = await post('/api/credits/redeem', { code: code });
+      if (j && j.ok) {
+        inp.value = '';
+        toast('兑换成功：+' + Number(j.amount || 0) + ' 分');
+        await refresh(true);
+      } else {
+        toast(String((j && j.msg) || '兑换失败，请检查兑换码'));
+      }
+    } finally {
+      rb.disabled = false;
+      rb.textContent = oldTxt;
+    }
   }
   async function refresh(manual) {
     if (busy) return;
@@ -6920,6 +6985,145 @@ body.floats-hidden #creditFloat { display: none !important; }
       paint({ ok: true, creditsOn: false, serverKey: false, balance: null });
     });
   } catch (e) {}
+})();
+</script>
+
+
+<script>
+/* ============================================================
+ * 99.0.43 真实用户模式（终端视角）
+ *  - 设置页只留「账户与积分」：不再出现接口地址 / API Key / 模型获取
+ *  - 生成仍由云端 Worker 代调，用户只看到「平台积分 → 出图」
+ *  - 后台术语（上游余额 / 防超卖 / 预扣结算）只留在管理台，不进 APP
+ *  - 开发者后门：URL 加 ?dev=1，或连点「账户与积分」标题 6 次
+ *  账本 / Worker / D1 / Netlify / 同步协议 一律不改。
+ * ============================================================ */
+(function () {
+  'use strict';
+  var DEV_KEY = 'stapp_dev_mode_v1';
+  var dev = /[?&]dev=1(?:&|$)/.test(location.search);
+  try { if (sessionStorage.getItem(DEV_KEY) === '1') dev = true; } catch (e) {}
+  window.__stappPlatformMode = !dev;
+  var PLATFORM_MODELS = ["gpt-image-2.6-sunburst", "gpt-image-2.6-flare", "gpt-image-2.5-sunburst", "gpt-image-2.5-flare", "gpt-image-2.0", "gpt-image-2.5-sunburst原生", "gpt-image-2.5-flare原生", "gpt-image-2.0-原生", "Nano-banana-2.1", "Nano-banana-Pro", "Nano-banana-2", "gpt-image-2.6-不超分", "gpt-image-2.5-不超分", "gpt-image-2.0-不超分", "Grok-image-2.0", "Grok-image-2.0-4K", "Midjourney v8.2", "Midjourney v8.2-2K", "Midjourney v8.2-特惠不稳定", "无限制-Seedream-5-Pro", "完全无限制-Z-Image", "完全无限制-Qwen-2.1", "无限制-NovelAI-V5", "无限制-NovelAI-V4.5", "Flash会员专属", "Kolors-极速生图"];
+  var OFFICIAL_BASE = 'https://api.image2pro.top/v1';
+
+  function $(id) { return document.getElementById(id); }
+  function toast(m) { try { if (typeof window.toast === 'function') window.toast(m, 2200); } catch (e) {} }
+
+  /* 余额不足时：直接把用户送到兑换框，不抛技术错误 */
+  window.__stappFocusRedeem = function () {
+    try { if (typeof window.switchView === 'function') window.switchView('settings'); } catch (e) {}
+    try { if (typeof window.setPane === 'function') window.setPane('user'); } catch (e) {}
+    setTimeout(function () {
+      var inp = $('stappCreditsCode');
+      if (inp) { try { inp.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {} inp.focus(); }
+    }, 320);
+    toast('积分不足，输入兑换码即可继续创作');
+  };
+
+  function enterDev() {
+    try { sessionStorage.setItem(DEV_KEY, '1'); } catch (e) {}
+    window.__stappPlatformMode = false;
+    var st = $('stappPlatformStyle'); if (st) st.parentNode.removeChild(st);
+    var tabs = $('setPaneTabs'); if (tabs) tabs.style.display = '';
+    var t = $('stappUserTitle'); if (t) t.style.display = 'none';
+    var foot = $('stappUserFoot'); if (foot) foot.style.display = 'none';
+    try { if (typeof window.setPane === 'function') window.setPane('custom'); } catch (e) {}
+    toast('已切回开发者模式');
+  }
+
+  function applyUI() {
+    if (dev) return;
+    /* 1) 隐藏分段控件 + 自定义接口面板，强制停在用户信息 */
+    var st = document.createElement('style');
+    st.id = 'stappPlatformStyle';
+    st.textContent = '#setPaneTabs{display:none!important}'
+      + '#setPaneCustom{display:none!important}'
+      + '#setPaneUser{display:block!important}'
+      + '#modelRefresh,#modelManual{display:none!important}';
+    document.head.appendChild(st);
+    try { if (typeof window.setPane === 'function') window.setPane('user'); } catch (e) {}
+
+    /* 2) 顶部标题条（连点 6 次回开发者模式） */
+    var pane = $('setPaneUser');
+    if (!pane) return false;
+    if (!$('stappUserTitle')) {
+      var title = document.createElement('div');
+      title.id = 'stappUserTitle';
+      title.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin:0 0 14px;'
+        + 'padding-bottom:12px;border-bottom:1px solid rgba(60,60,67,.08);cursor:default';
+      title.innerHTML = '<div><div style="font-size:16px;font-weight:700;letter-spacing:.01em">账户与积分</div>'
+        + '<div style="font-size:11.5px;opacity:.62;margin-top:3px">登录后即可查看余额与兑换积分</div></div>'
+        + '<span style="font-size:11px;opacity:.4">✳</span>';
+      var taps = 0, timer = null;
+      title.addEventListener('click', function () {
+        taps++; clearTimeout(timer);
+        timer = setTimeout(function () { taps = 0; }, 1600);
+        if (taps >= 6) { taps = 0; enterDev(); }
+      });
+      pane.insertBefore(title, pane.firstChild);
+    }
+
+    /* 3) 把两个工具按钮搬过来，并换掉开发者味脚注 */
+    ['btnExport', 'btnReset'].forEach(function (id) {
+      var b = $(id); if (b) pane.appendChild(b);
+    });
+    var oldFoot = document.querySelector('#setPaneCustom .set-foot');
+    if (oldFoot) oldFoot.style.display = 'none';
+    if (!$('stappUserFoot')) {
+      var foot = document.createElement('p');
+      foot.id = 'stappUserFoot';
+      foot.className = 'set-foot';
+      foot.textContent = '作品与积分已同步至你的云端账户';
+      pane.appendChild(foot);
+    }
+    return true;
+  }
+
+  /* 4) 模型就绪：不暴露「填写地址获取模型」，用平台内置清单兜底 */
+  function ensureModels() {
+    if (dev) return;
+    try {
+      if (typeof cfg === 'undefined') return;
+      if (!cfg.baseUrl) cfg.baseUrl = OFFICIAL_BASE;
+      if (!Array.isArray(cfg.models) || !cfg.models.length) {
+        cfg.models = PLATFORM_MODELS.slice();
+        cfg.genModel = cfg.models[0];
+        cfg.visionModel = cfg.models[0];
+      }
+      if (typeof saveCfg === 'function') saveCfg();
+      if (typeof updateModelUI === 'function') updateModelUI();
+      if (typeof renderCfgStatus === 'function') renderCfgStatus();
+      if (typeof updateVisionHint === 'function') updateVisionHint();
+      /* 平台模式下任何「刷新模型」都不再向外网直连 */
+      if (typeof window.refreshModels === 'function') {
+        window.refreshModels = async function () {
+          try {
+            cfg.models = PLATFORM_MODELS.slice();
+            if (cfg.models.indexOf(cfg.genModel) < 0) cfg.genModel = cfg.models[0];
+            if (typeof saveCfg === 'function') saveCfg();
+            if (typeof updateModelUI === 'function') updateModelUI();
+            if (typeof renderModelList === 'function') renderModelList();
+          } catch (e) {}
+          return true;
+        };
+      }
+    } catch (e) {}
+  }
+
+  var tries = 0;
+  function boot() {
+    if (!applyUI()) { if (tries++ < 120) setTimeout(boot, 150); return; }
+    ensureModels();
+    /* 用户信息面板是异步挂载的，积分卡片出现后再把标题条压到最上面 */
+    setTimeout(function () {
+      var pane = $('setPaneUser'), t = $('stappUserTitle');
+      if (pane && t && pane.firstChild !== t) pane.insertBefore(t, pane.firstChild);
+      ['btnExport', 'btnReset'].forEach(function (id) { var b = $(id); if (b) pane.appendChild(b); });
+      var f = $('stappUserFoot'); if (f) pane.appendChild(f);
+    }, 1200);
+  }
+  setTimeout(boot, 700);
 })();
 </script>
 

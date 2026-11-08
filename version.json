@@ -1,6 +1,6 @@
 {
-  "version": "99.0.41",
+  "version": "99.0.43",
   "url": "https://ccc2200ccc.github.io/stapp/index.html",
-  "notes": "平台积分账本整合：tupian Worker 下单前 hold 预扣（余额不足直接拒绝且绝不回退直连）、确认出图 settle、失败/超时 refund；新增 /api/credits 只读余额；服务端 UPSTREAM_KEY Secret 优先，前端不再携带 Key；设置-用户信息追加平台积分卡片。账本/Secret 未配置时全部行为与 99.0.40 一致。需同步替换 stapp-credits Worker 为 credits_整合补丁.js（仅追加服务端代调鉴权，6 行）。",
-  "note": "平台积分账本整合"
+  "notes": "真实用户模式：设置页只保留「账户与积分」，隐藏接口地址/API Key/模型获取等开发者配置；生成固定走云端托管，用户只见「平台积分 → 出图」；后台术语（上游余额/防超卖/预扣）只留在管理台；余额不足自动跳到兑换框；内置图片模型清单兜底，刷新模型不再直连外网。开发者后门 ?dev=1 或连点标题 6 次。Worker/D1/Netlify/同步协议零改动。",
+  "note": "真实用户模式：设置页去 API 化"
 }
