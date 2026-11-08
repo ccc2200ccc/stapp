@@ -10,16 +10,12 @@
 <style>
 html,body{height:100%;margin:0;background:#e7efe8;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
 #appFrame{position:fixed;inset:0;z-index:1;width:100%;height:100%;border:0;background:transparent}
-/* 右下角常驻检查按钮：APP 内一键下载更新 */
-#fab{position:fixed;right:14px;bottom:calc(14px + env(safe-area-inset-bottom));z-index:2147483100;width:44px;height:44px;border-radius:50%;border:1px solid rgba(255,255,255,.7);background:rgba(48,93,72,.82);color:#fff;font-size:20px;line-height:1;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(18,39,27,.26);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);cursor:pointer;transition:transform .25s cubic-bezier(.2,.9,.25,1.2),opacity .2s}
-#fab:active{transform:scale(.88) rotate(60deg)}
-#fab.busy{animation:spin .9s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
+/* 99.0.46：右下角常驻 ⟳ 已移除，更新全部由壳自动完成 */
 #toast{position:fixed;left:50%;top:calc(10px + env(safe-area-inset-top));transform:translate(-50%,-140%);z-index:2147483200;max-width:min(92vw,420px);padding:10px 16px;border-radius:14px;background:rgba(24,58,42,.94);color:#fff;font-size:13px;line-height:1.5;box-shadow:0 8px 26px rgba(0,0,0,.22);transition:transform .32s cubic-bezier(.2,.9,.25,1.15),opacity .32s;opacity:0;pointer-events:none;text-align:center}
 #toast.show{transform:translate(-50%,0);opacity:1}
 #updateModal{position:fixed;inset:0;z-index:2147483000;display:none;align-items:flex-end;justify-content:center;padding:18px 18px calc(18px + env(safe-area-inset-bottom));background:rgba(16,28,22,.34)}
 #updateModal.show{display:flex}
-.update-card{width:min(420px,100%);margin-bottom:74px;padding:24px 20px 18px;border:1px solid rgba(255,255,255,.66);border-radius:24px;background:rgba(252,253,251,.94);box-shadow:0 18px 48px rgba(18,39,27,.2)}
+.update-card{width:min(420px,100%);margin-bottom:0;padding:24px 20px 18px;border:1px solid rgba(255,255,255,.66);border-radius:24px;background:rgba(252,253,251,.94);box-shadow:0 18px 48px rgba(18,39,27,.2)}
 .update-kicker{font-size:11px;letter-spacing:.16em;color:#75907d}
 .update-card h3{margin:8px 0;font-size:21px}
 .update-card p{margin:0;color:#52675b;font-size:14px;line-height:1.7}
@@ -34,7 +30,6 @@ html,body{height:100%;margin:0;background:#e7efe8;font-family:-apple-system,Blin
 </head>
 <body>
 <iframe id="appFrame" title="灵境应用"></iframe>
-<button id="fab" type="button" title="检查更新" aria-label="检查更新">&#8635;</button>
 <div id="toast" role="status"></div>
 <div id="updateModal" role="dialog" aria-modal="true" aria-labelledby="updateTitle">
   <div class="update-card">
@@ -51,16 +46,16 @@ html,body{height:100%;margin:0;background:#e7efe8;font-family:-apple-system,Blin
 <script>
 
 /* ============================================================
- * 99.0.45 发布通道启动壳（这是最后一次上传 GitHub 的 index.html）
- *  旧壳三个硬伤：
- *   1) version.json 与 app.html 分两次拉，Pages CDN 可能一个新一个旧；
- *      confirmUpdate 先写版本号再换内容 → 版本号被「吃掉」，
- *      之后永远不再弹更新，只能反复杀后台碰运气。
- *   2) boot() 只在页面加载跑一次，从后台恢复不重新检查。
- *   3) 内容以 localStorage 旧 HTML 为主，网络/CDN 慢就等于没更新。
- *  新版：元信息 + HTML 一次返回并带 build 戳记，校验通过才记版本；
+ * 99.0.46 发布通道启动壳（这是最后一次上传 GitHub 的 index.html）
+ *  99.0.45 已解决：元信息 + HTML 一次返回并带 build 戳记，校验通过才记版本；
  *       启动 / 回前台 / bfcache 恢复 / 获得焦点 / 每 45 秒 都检查；
  *       发现新版直接热替换 srcdoc，不用杀后台、不用点、不用刷几次。
+ *  99.0.46 两处收尾：
+ *   1) 删掉右下角常驻 ⟳：它压在导航栏上，且自动检查本就覆盖全部场景。
+ *      手动入口保留在「设置 → 账户与积分 → 版本条 → 检查更新」。
+ *   2) 删掉 injectPromptLib 全屏词库层：它拦截「灵感案例」点击后盖住整个
+ *      iframe，APP 自己的底部导航栏被遮住，只剩左上角返回按钮。
+ *      现在壳只负责装载与更新，词库回到 APP 内 view-cases，导航栏一直在。
  * ============================================================ */
 const QCH = new URLSearchParams(location.search).get('ch');
 if (QCH) { try { localStorage.setItem('ia_channel_base', QCH); } catch (e) {} }
@@ -73,7 +68,6 @@ const VER_KEY   = 'ia_confirmed_version_v2';
 
 const frame = document.getElementById('appFrame');
 const modal = document.getElementById('updateModal');
-const fab = document.getElementById('fab');
 const toastEl = document.getElementById('toast');
 
 let currentBuild = 0;
@@ -89,56 +83,12 @@ function toast(msg) {
   toastTimer = setTimeout(function () { toastEl.classList.remove('show'); }, 2800);
 }
 
-const PROMPT_LIB_URL = 'https://ccc2200ccc.github.io/stapp/prompts/index.html';
-
-function injectPromptLib(html) {
-  if (html.indexOf('promptLibPanel') !== -1) return html;   // 防重复注入
-
-  const PANEL_HTML =
-    '<div id="promptLibPanel" style="position:fixed;inset:0;z-index:2147482000;display:none;flex-direction:column;background:#0a0a12;padding-top:env(safe-area-inset-top);box-sizing:border-box;">' +
-      '<div style="flex:0 0 44px;display:flex;align-items:center;gap:10px;padding:0 12px;background:rgba(20,30,24,.6);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);color:#fff;font-size:13px;">' +
-        '<button id="promptLibBack" type="button" style="border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;padding:6px 12px;border-radius:14px;font:inherit;cursor:pointer;">‹ 返回</button>' +
-        '<span style="font-weight:600;">提示词库</span>' +
-        '<span style="margin-left:auto;font-size:11px;color:rgba(255,255,255,.55);">随机抽卡 · 全库</span>' +
-      '</div>' +
-      '<iframe id="promptLibFrame" src="' + PROMPT_LIB_URL + '" title="提示词库" allow="clipboard-write" loading="lazy" style="flex:1;width:100%;border:0;display:block;background:transparent;"></iframe>' +
-    '</div>';
-
-  const PANEL_JS =
-    '<script>' +
-    '(function(){' +
-      'var panel=document.getElementById("promptLibPanel");' +
-      'if(!panel) return;' +
-      'function open(){ panel.style.display="flex"; try{document.body.style.overflow="hidden";}catch(e){} }' +
-      'function close(){ panel.style.display="none"; try{document.body.style.overflow="";}catch(e){} }' +
-      'var back=document.getElementById("promptLibBack");' +
-      'if(back) back.addEventListener("click",function(e){ e.stopPropagation(); close(); });' +
-      'document.addEventListener("click",function(e){' +
-        'var n=e.target,hit=false;' +
-        'for(var k=0;k<6&&n;k++,n=n.parentElement){' +
-          'var tt=(n.textContent||"").trim();' +
-          'if(tt==="灵感案例"){hit=true;break;}' +
-          'if(tt.indexOf("灵感案例")!==-1&&tt.length<=10){hit=true;break;}' +
-        '}' +
-        'if(hit){ e.preventDefault(); e.stopPropagation(); open(); return; }' +
-        'if(panel.style.display==="flex"){' +
-          'var m=e.target;' +
-          'for(var j=0;j<4&&m;j++,m=m.parentElement){' +
-            'var tag=m.tagName||"";' +
-            'if(tag==="NAV"||tag==="HEADER"||tag==="UL"||m.getAttribute("role")==="tablist"){close();break;}' +
-          '}' +
-        '}' +
-      '},true);' +
-    '})();' +
-    '<\/script>';
-
-  const block = PANEL_HTML + PANEL_JS;
-  return /<\/body>/i.test(html) ? html.replace(/<\/body>/i, block + '\n</body>') : html + block;
-}
+/* 99.0.46：壳不再往 app.html 里注入任何全屏词库层。
+   灵感案例走 APP 自带的 #view-cases（内嵌词库 iframe），底部导航栏始终可见。 */
 
 function showApp(html, build, version) {
   frame.hidden = false;
-  frame.srcdoc = injectPromptLib(html);
+  frame.srcdoc = html;
   if (build != null) { currentBuild = build; try { localStorage.setItem(BUILD_KEY, String(build)); } catch (e) {} }
   if (version != null) { currentVersion = version; try { localStorage.setItem(VER_KEY, version); } catch (e) {} }
 }
@@ -191,7 +141,7 @@ async function checkUpdate(force) {
   const now = Date.now();
   if (checking) return;
   if (!force && now - lastCheck < 1500) return;
-  lastCheck = now; checking = true; fab.classList.add('busy');
+  lastCheck = now; checking = true;
   try {
     const v = await fetchJSON(CHANNEL + '/api/app/version');
     if (!v || v.ok === false) throw new Error('通道返回异常');
@@ -212,18 +162,19 @@ async function checkUpdate(force) {
     /* 关键：失败绝不写 build，下次继续重试，不吞版本 */
     if (force) toast('更新失败：' + (e.message || '网络异常') + '（已保留当前版本）');
   } finally {
-    checking = false; fab.classList.remove('busy');
+    checking = false;
   }
 }
 
 document.getElementById('updateLater').addEventListener('click', function () { modal.classList.remove('show'); });
 document.getElementById('updateNow').addEventListener('click', function () { checkUpdate(true); });
-fab.addEventListener('click', function () { if (!checking) openPanel(); });
 
-/* 回前台 / bfcache 恢复 / 获得焦点 都立刻检查，不用杀后台 */
+/* 99.0.46：无悬浮按钮，全部自动 —— 回前台 / bfcache / 焦点 / 联网恢复 / 每 45 秒
+   都检查一次；手动入口在 APP「设置 → 版本条 → 检查更新」（调 checkUpdate(true)）。 */
 document.addEventListener('visibilitychange', function () { if (!document.hidden) checkUpdate(false); });
 window.addEventListener('pageshow', function (e) { if (e.persisted) checkUpdate(false); });
 window.addEventListener('focus', function () { checkUpdate(false); });
+window.addEventListener('online', function () { checkUpdate(false); });
 setInterval(function () { if (!document.hidden) checkUpdate(false); }, 45000);
 
 bootCached().then(function () { checkUpdate(false); });
