@@ -7,6 +7,128 @@
 <meta name="app-version" content="1.0.8">
 <meta name="app-update-manifest" content="https://raw.githubusercontent.com/ccc2200ccc/stapp/main/version.json">
 
+<script>
+/* ============================================================
+ * 99.0.44 账号保险箱：本机数据严格按登录账号隔离
+ *  - 退出 / 注册 / 换号时，历史、草稿、参考图、反推记录、自定义接口、
+ *    设置分页、补领记录整体封存到「该账号专属快照」
+ *  - 新账号拿到干净空间，绝不继承上一账号的任何内容
+ *  - 开发者后门（?dev=1 / 连点 6 次）跟着账号走，换号立即失效
+ *  - 本机高清原图 IndexedDB 按账号分库，互不串图
+ *  - 只把「设备级连接」（接口地址 / Key）留在设备里且不进快照，
+ *    保证换号后仍能生图，但界面上永远看不到
+ * ============================================================ */
+(function () {
+  'use strict';
+  var ACC = 'ia_cloud_account_v1';
+  var OWNER = 'stapp_ns_owner_v1';
+  var SNAP = 'stapp_ns_snap_';
+  var MAP = 'stapp_ns_origdb_v1';
+  var CONN = 'stapp_platform_conn_v1';
+  var DEV = 'stapp_dev_mode_v1', DEV_OWNER = 'stapp_dev_owner_v1';
+  var PRIVATE = [
+    'ia_cfg_v6', 'ia_history_v6', 'ia_draft_v6', 'ia_vision_history_v6',
+    'ia_pending_gen_v1', 'ia_set_pane_v1', 'ledgerOverviewToken',
+    'ia_orig_uploaded_v2', 'stapp_refs_v32', 'stapp_auto_ratio_v39',
+    'ia_full_claimed_v1'
+  ];
+  function hash(s) {
+    var x = 5381; s = String(s || '__guest__');
+    for (var i = 0; i < s.length; i++) x = ((x << 5) + x + s.charCodeAt(i)) | 0;
+    return (x >>> 0).toString(36);
+  }
+  function acct() { try { return localStorage.getItem(ACC) || ''; } catch (e) { return ''; } }
+  function owner() { try { return localStorage.getItem(OWNER); } catch (e) { return null; } }
+  function readMap() { try { return JSON.parse(localStorage.getItem(MAP) || '{}') || {}; } catch (e) { return {}; } }
+  function dbFor(o) {
+    var m = readMap(), k = hash(o);
+    if (!m.__init) {                    /* 老版本留下的原图库认作当前账号，不丢高清图 */
+      m.__init = 1; m[hash(o)] = 'ia_full_v1';
+      try { localStorage.setItem(MAP, JSON.stringify(m)); } catch (e) {}
+    }
+    if (!m[k]) {
+      m[k] = 'ia_full_' + k;
+      try { localStorage.setItem(MAP, JSON.stringify(m)); } catch (e) {}
+    }
+    return m[k];
+  }
+  /* 注意：业务脚本里有全局 let history（历史数组），会遮蔽 window.history，
+     所以这里一律用 window.history / window.location，绝不写裸 history。 */
+  function cleanUrl() {
+    try {
+      var q = String(window.location.search || '');
+      if (!/[?&]dev=1(?:&|$)/.test(q)) return window.location.href;
+      q = q.replace(/([?&])dev=1(?:&|$)/, function (_, p) { return p === '?' ? '?' : ''; }).replace(/[?&]$/, '');
+      var u = window.location.pathname + q + (window.location.hash || '');
+      try { window.history.replaceState(null, '', u); } catch (e) {}
+      return u;
+    } catch (e) { return ''; }
+  }
+  function switchTo(next) {
+    var prev = owner();
+    if (prev === null) {               /* 首次升级：把现有数据认作当前账号，不打断使用 */
+      try { localStorage.setItem(OWNER, next); } catch (e) {}
+      window.__stappOrigDB = dbFor(next);
+      return false;
+    }
+    if (prev === next) { window.__stappOrigDB = dbFor(next); return false; }
+
+    /* 1) 封存旧账号全部私有数据 */
+    var pack = {}, c, conn = null;
+    PRIVATE.forEach(function (k) {
+      try { var v = localStorage.getItem(k); if (v !== null) pack[k] = v; } catch (e) {}
+    });
+    try {
+      c = JSON.parse(pack['ia_cfg_v6'] || 'null');
+      if (c && (c.baseUrl || c.apiKey)) conn = { baseUrl: c.baseUrl || '', apiKey: c.apiKey || '' };
+    } catch (e) {}
+    if (conn) { try { localStorage.setItem(CONN, JSON.stringify(conn)); } catch (e) {} }
+    try { localStorage.setItem(SNAP + hash(prev), JSON.stringify(pack)); } catch (e) {}
+
+    /* 2) 清空 + 开发者后门随账号失效 */
+    PRIVATE.forEach(function (k) { try { localStorage.removeItem(k); } catch (e) {} });
+    try { sessionStorage.removeItem(DEV); sessionStorage.removeItem(DEV_OWNER); } catch (e) {}
+    var jump = cleanUrl();
+
+    /* 3) 恢复新账号快照；全新账号只恢复不可见的设备级连接 */
+    var back = null;
+    try { back = JSON.parse(localStorage.getItem(SNAP + hash(next)) || 'null'); } catch (e) {}
+    if (back && typeof back === 'object') {
+      PRIVATE.forEach(function (k) {
+        if (back[k] != null) { try { localStorage.setItem(k, back[k]); } catch (e) {} }
+      });
+    } else if (conn) {
+      try {
+        localStorage.setItem('ia_cfg_v6', JSON.stringify({
+          provider: 'custom', baseUrl: conn.baseUrl, apiKey: conn.apiKey,
+          models: [], genModel: '', visionModel: ''
+        }));
+      } catch (e) {}
+    }
+    try { localStorage.setItem(OWNER, next); } catch (e) {}
+    window.__stappOrigDB = dbFor(next);
+    setTimeout(function () {
+      try { if (jump) window.location.replace(jump); else window.location.reload(); }
+      catch (e) { try { window.location.reload(); } catch (e2) {} }
+    }, 220);
+    return true;
+  }
+
+  if (switchTo(acct())) return;          /* 启动时发现账号已变，切换完等重载 */
+  function check() {
+    var a = acct();
+    if (owner() !== a) switchTo(a);
+    else window.__stappOrigDB = dbFor(a);
+  }
+  try {
+    window.addEventListener('ia-cloud-auth', function () { setTimeout(check, 30); });
+    window.addEventListener('ia-cloud-logout', function () { setTimeout(check, 30); });
+  } catch (e) {}
+  setInterval(check, 260);
+  window.__stappAccountVault = { check: check, privateKeys: PRIVATE };
+})();
+</script>
+
 <style>
 :root{
   --bg:#f7f6f4;
@@ -5046,7 +5168,7 @@ body.floats-hidden #creditFloat { display: none !important; }
 
     $('iaCloudLogout').addEventListener('click', async function () {
       try { await api('POST', '/api/logout', {}); } catch (e) {}
-      logoutLocal(); badge(''); toastMsg('已退出，本机历史保留');
+      logoutLocal(); badge(''); toastMsg('已退出，本机数据已按账号隔离');
     });
     $('iaCloudLogoutAll').addEventListener('click', function () {
       askConfirm('退出所有设备', '所有已登录设备都会退出，云端历史不受影响。', [], async function () {
@@ -5087,7 +5209,7 @@ body.floats-hidden #creditFloat { display: none !important; }
           var r = await api('DELETE', '/api/account', { confirm: v.confirm, password: v.password });
           if (!r || !r.ok) { toastMsg((r && r.msg) || '删除失败'); return; }
           logoutLocal(); badge('');
-          toastMsg('账号已删除，本机历史保留');
+          toastMsg('账号已删除，本机数据已按账号隔离');
         }
       );
     });
@@ -6289,7 +6411,7 @@ body.floats-hidden #creditFloat { display: none !important; }
  * ============================================================ */
 (function () {
   'use strict';
-  var DB_NAME = 'ia_full_v1', STORE = 'imgs', VER = 1;
+  var DB_NAME = window.__stappOrigDB || 'ia_full_v1', STORE = 'imgs', VER = 1;
   var CLOUD = 'https://tupian.ccc2200ccc.workers.dev'; /* 99.0.26 拦截器会自动改写到可达地址 */
   var LS_TOK = 'ia_cloud_token_v1', LS_CLAIM = 'ia_full_claimed_v1';
   var dbp = null, mem = {}, saved = {}, claimed = {};
@@ -7000,9 +7122,16 @@ body.floats-hidden #creditFloat { display: none !important; }
  * ============================================================ */
 (function () {
   'use strict';
-  var DEV_KEY = 'stapp_dev_mode_v1';
-  var dev = /[?&]dev=1(?:&|$)/.test(location.search);
-  try { if (sessionStorage.getItem(DEV_KEY) === '1') dev = true; } catch (e) {}
+  var DEV_KEY = 'stapp_dev_mode_v1', DEV_OWNER = 'stapp_dev_owner_v1';
+  function devAcct() { try { return localStorage.getItem('ia_cloud_account_v1') || ''; } catch (e) { return ''; } }
+  var urlDev = /[?&]dev=1(?:&|$)/.test(location.search);
+  if (urlDev) {
+    try { sessionStorage.setItem(DEV_KEY, '1'); sessionStorage.setItem(DEV_OWNER, devAcct()); } catch (e) {}
+  }
+  var dev = urlDev;
+  try {
+    if (!dev && sessionStorage.getItem(DEV_KEY) === '1' && sessionStorage.getItem(DEV_OWNER) === devAcct()) dev = true;
+  } catch (e) {}
   window.__stappPlatformMode = !dev;
   var PLATFORM_MODELS = ["gpt-image-2.6-sunburst", "gpt-image-2.6-flare", "gpt-image-2.5-sunburst", "gpt-image-2.5-flare", "gpt-image-2.0", "gpt-image-2.5-sunburst原生", "gpt-image-2.5-flare原生", "gpt-image-2.0-原生", "Nano-banana-2.1", "Nano-banana-Pro", "Nano-banana-2", "gpt-image-2.6-不超分", "gpt-image-2.5-不超分", "gpt-image-2.0-不超分", "Grok-image-2.0", "Grok-image-2.0-4K", "Midjourney v8.2", "Midjourney v8.2-2K", "Midjourney v8.2-特惠不稳定", "无限制-Seedream-5-Pro", "完全无限制-Z-Image", "完全无限制-Qwen-2.1", "无限制-NovelAI-V5", "无限制-NovelAI-V4.5", "Flash会员专属", "Kolors-极速生图"];
   var OFFICIAL_BASE = 'https://api.image2pro.top/v1';
@@ -7022,7 +7151,7 @@ body.floats-hidden #creditFloat { display: none !important; }
   };
 
   function enterDev() {
-    try { sessionStorage.setItem(DEV_KEY, '1'); } catch (e) {}
+    try { sessionStorage.setItem(DEV_KEY, '1'); sessionStorage.setItem(DEV_OWNER, devAcct()); } catch (e) {}
     window.__stappPlatformMode = false;
     var st = $('stappPlatformStyle'); if (st) st.parentNode.removeChild(st);
     var tabs = $('setPaneTabs'); if (tabs) tabs.style.display = '';
