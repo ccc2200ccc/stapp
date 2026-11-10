@@ -17,6 +17,16 @@
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
+  /* 横向裁切只放在 html：body 一旦出现 overflow-x:hidden，
+     会被计算成 overflow-y:auto 的「不可滚动滚动容器」，
+     在 Android WebView 的 iframe 里把触摸滚动直接截断。 */
+  html {
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
   body {
     font-family: -apple-system, "SF Pro Text", "PingFang SC", system-ui, sans-serif;
     background:
@@ -26,8 +36,7 @@
       #0a0a12;
     min-height: 100dvh;
     padding-bottom: 24px;
-    overflow-x: hidden;
-    overscroll-behavior: none;
+    overscroll-behavior: auto;
     -webkit-overflow-scrolling: touch;
   }
 
@@ -120,7 +129,6 @@
     min-width: 0;
     box-sizing: border-box;
     margin: 0 auto;
-    content-visibility: auto;
   }
 
   /* 卡片盒子 + 内层严格居中，杜绝横向溢出 */
@@ -751,6 +759,7 @@ window.addEventListener('message', function (e) {
   SHUFFLE_SEED = _seedNum(d.seed);
   state.page = 1;
   if (state.all.length) { try { applyFilter(true); } catch (err) {} }
+  try { window.scrollTo(0, 0); } catch (err3) {}
   try {
     (e.source || window.parent).postMessage({ __stapp_shuffle_ack: 1, seed: d.seed, numSeed: SHUFFLE_SEED }, '*');
   } catch (err2) {}
@@ -892,25 +901,32 @@ function cardHTML(p) {
 
 function renderCards() {
   const shown = state.view.slice(0, state.page * CONFIG.PAGE_SIZE);
+  /* 先留住「显示更多」节点：自动续载频繁重绘时，按钮不会被销毁重建 */
+  const moreBox = document.getElementById('loadMore');
   if (!shown.length) {
     grid.innerHTML = `<div class="empty-state">
       <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
       <p>没有找到匹配的提示词<br/>试试其他关键词或分类</p></div>`;
+    showCount();
     return;
   }
   grid.innerHTML = shown.map(p => `<article class="prompt-card" data-id="${esc(p.id)}">${cardHTML(p)}</article>`).join('');
-  const btn = document.getElementById('loadMore');
   if (state.view.length > shown.length) {
-    if (!btn) {
-      const d = document.createElement('div');
-      d.id = 'loadMore';
-      d.style.cssText = 'grid-column:1/-1;text-align:center;padding:8px 0 24px';
-      d.innerHTML = '<button class="copy-btn" style="height:36px;padding:0 20px;font-size:13px" onclick="state.page++;renderCards()">显示更多（还有 ' + (state.view.length - shown.length) + ' 条）</button>';
-      grid.appendChild(d);
-    } else {
-      btn.querySelector('span,button').innerHTML = '显示更多（还有 ' + (state.view.length - shown.length) + ' 条）';
+    const d = moreBox || document.createElement('div');
+    d.id = 'loadMore';
+    d.style.cssText = 'grid-column:1/-1;text-align:center;padding:8px 0 24px';
+    let b = d.querySelector('button');
+    if (!b) {
+      b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'copy-btn';
+      b.style.cssText = 'height:44px;min-width:220px;padding:0 22px;font-size:13px';
+      b.addEventListener('click', function () { state.page += 1; renderCards(); });
+      d.appendChild(b);
     }
-  } else if (btn) { btn.remove(); }
+    b.textContent = '显示更多（还有 ' + (state.view.length - shown.length) + ' 条）';
+    grid.appendChild(d);
+  }
   showCount();
 }
 
@@ -926,6 +942,28 @@ function showCount() {
     ? `共 ${state.all.length} 条提示词，当前显示 ${Math.min(state.view.length, state.page * CONFIG.PAGE_SIZE)} 条`
     : (state.loading ? '正在加载提示词库…' : '未加载到数据，请检查 data/ 目录是否与本页面同级（需通过 http 访问）');
 }
+
+/* ===== 滑到底自动续载：只增页、不重洗牌，本次进入的顺序保持不动 ===== */
+(function () {
+  var busy = false;
+  function scroller() { return document.scrollingElement || document.documentElement; }
+  function nearBottom() {
+    var sc = scroller();
+    var y = window.scrollY || sc.scrollTop || document.body.scrollTop || 0;
+    var h = Math.max(sc.scrollHeight || 0, document.body.scrollHeight || 0);
+    return h - (y + window.innerHeight) < 480;
+  }
+  function more() {
+    if (busy || !document.getElementById('loadMore') || !nearBottom()) return;
+    busy = true;
+    state.page += 1;
+    try { renderCards(); } catch (e) {}
+    setTimeout(function () { busy = false; more(); }, 260);
+  }
+  window.addEventListener('scroll', more, { passive: true });
+  document.addEventListener('scroll', more, { passive: true, capture: true });
+  window.addEventListener('resize', more);
+})();
 
 
 function switchView(mode) {
