@@ -1072,29 +1072,34 @@ function showToast(msg) {
 #diceToast { animation:diceToastIn .24s ease both; }
 #diceToast.out { opacity:0; transform:translateX(-50%) translateY(10px); transition:opacity .25s, transform .25s; }
 
-/* ===== 99.0.59 · 卡片居中修正：任何屏宽都水平居中、零横向溢出 ===== */
+/* ===== 99.0.60 · 卡片居中：固定列宽 + 居中分配，最后一排也居中 ===== */
 html, body { max-width:100%!important; overflow-x:hidden!important; }
 .prompt-grid{
   display:grid!important;
-  grid-template-columns:repeat(auto-fit,minmax(min(280px,100%),1fr))!important;
+  grid-template-columns:repeat(auto-fit,minmax(0,min(280px,100%)))!important;
+  justify-content:center!important;
+  justify-items:stretch!important;
   width:100%!important; min-width:0!important; max-width:960px!important;
   margin-left:auto!important; margin-right:auto!important;
-  padding-left:16px!important; padding-right:16px!important;
-  box-sizing:border-box!important;
-  justify-content:center!important; justify-items:center!important;
+  padding:16px 16px 20px!important; box-sizing:border-box!important;
+  gap:14px!important;
 }
 .prompt-card{
   width:100%!important; min-width:0!important; max-width:100%!important;
-  justify-self:center!important; margin-left:auto!important; margin-right:auto!important;
-  box-sizing:border-box!important;
+  margin-left:0!important; margin-right:0!important; box-sizing:border-box!important;
 }
-.prompt-card--wide{ grid-column:span 1!important; }
-@media(min-width:640px){ .prompt-card--wide{ grid-column:span 2!important; } }
+/* 宽卡不再跨列抢轨道，避免整排被拉偏 */
+.prompt-card--wide{ grid-column:auto!important; }
 .prompt-card-img-wrap,.prompt-card-img{
   width:100%!important; max-width:100%!important; box-sizing:border-box!important;
 }
-.prompt-grid > .empty-state{ grid-column:1/-1!important; }
+.prompt-grid > .empty-state{ grid-column:1/-1!important; text-align:center!important; }
 #statBar{ max-width:960px!important; margin-left:auto!important; margin-right:auto!important; text-align:center!important; }
+.category-bar,.categories,.chip-row{ justify-content:center!important; }
+/* 手机窄屏：单列撑满、左右各 16px，卡片不缩水；宽屏才用固定列宽居中 */
+@media(max-width:640px){
+  .prompt-grid{ grid-template-columns:minmax(0,1fr)!important; padding-left:16px!important; padding-right:16px!important; }
+}
 
 </style>
 
@@ -1448,7 +1453,7 @@ document.addEventListener("DOMContentLoaded", function(){
 </script>
 
 
-<!-- 99.0.59 · 案例列表：每次点「灵感案例」按新种子洗一次；本次停留内顺序固定 -->
+<!-- 99.0.60 · 案例列表：每次点「灵感案例」按新种子洗一次；本次停留内顺序固定 -->
 <script>
 (function () {
   var done = Object.create(null);
@@ -1494,18 +1499,19 @@ document.addEventListener("DOMContentLoaded", function(){
     if (!seed || seed === lastSeed) return;      /* 同一次点击的 load 补发不重复洗 */
     var tries = 0;
     (function wait() {
-      if (shuffleOnce(seed)) return;
+      if (shuffleOnce(seed)) { ack(seed); return; }
       if (tries++ < 80) setTimeout(wait, 120);  /* 等 data/*.json 加载完 */
     })();
   }
 
+  function ack(seed) {
+    try { window.parent.postMessage({ __stapp_shuffle_ack: 1, seed: String(seed) }, '*'); } catch (e) {}
+  }
   window.addEventListener('message', function (e) {
     var d = e.data;
     if (!d || d.__stapp_shuffle !== 1 || d.seed == null) return;
     try { if (e.source && e.source !== window.parent) return; } catch (err) {}
-    var seed = String(d.seed);                 /* 字符串 / 数字种子都收 */
-    onSeed(seed);
-    try { (e.source || window.parent).postMessage({ __stapp_shuffle_ack: 1, seed: seed }, '*'); } catch (e2) {}
+    onSeed(String(d.seed));                 /* 字符串 / 数字种子都收 */
   });
 
   function fromUrl() {
@@ -1514,7 +1520,7 @@ document.addEventListener("DOMContentLoaded", function(){
     return m ? decodeURIComponent(m[1]) : '';
   }
   window.addEventListener('hashchange', function () { var s = fromUrl(); if (s) onSeed(s); });
-  var s0 = fromUrl(); if (s0) onSeed(s0);
+  var s0 = fromUrl(); if (s0) onSeed(s0);   /* URL 种子也回 ack，父页不会误判 */
 
   function ready() { try { window.parent.postMessage({ __stapp_lib_ready: 1 }, '*'); } catch (e) {} }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ready);
