@@ -951,7 +951,7 @@ function cardHTML(p) {
           <span class="prompt-text-label">Prompt</span>
           <div class="prompt-actions">
             <button class="use-prompt-btn" data-action="use" data-id="${esc(p.id)}">
-              <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>使用</span>
+              <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>填入</span>
             </button>
             <button class="copy-btn" data-action="copy" data-id="${esc(p.id)}">
               <svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg><span>复制</span>
@@ -1182,6 +1182,8 @@ function showToast(msg) {
   100% { transform:rotate(0)      scale(1) }
 }
 #diceFab.rolling { animation:diceWobble .56s cubic-bezier(.25,.8,.35,1); }
+/* 抽卡面板打开时把骰子挪到右上角，别压住底部「填入 / 复制」两颗按钮 */
+#diceFab.dice-panel-open { top:8px!important; left:auto!important; right:8px!important; }
 
 @keyframes diceToastIn {
   from { opacity:0; transform:translateX(-50%) translateY(12px) }
@@ -1203,7 +1205,10 @@ function showToast(msg) {
       <button id="diceClose" style="border:0.5px solid rgba(255,255,255,0.3);background:rgba(255,255,255,0.12);color:#fff;border-radius:50%;width:28px;height:28px;cursor:pointer;font-size:14px;line-height:1;">✕</button>
     </div>
     <div id="diceBody" style="position:relative;overflow-y:auto;scrollbar-width:thin;max-height:66vh;padding-right:2px;"></div>
-    <button id="diceCopy" style="position:relative;margin-top:10px;width:100%;padding:11px;border:0.5px solid rgba(74,222,222,0.65);background:rgba(74,222,222,0.22);color:#c9fbfb;border-radius:14px;font-size:13px;font-weight:700;cursor:pointer;">复制本条提示词</button>
+    <div style="position:relative;display:flex;gap:8px;margin-top:10px;">
+      <button id="diceFill" type="button" style="flex:1.7;min-width:0;padding:11px 8px;border:0.5px solid rgba(74,222,222,0.85);background:rgba(74,222,222,0.34);color:#eafffe;border-radius:14px;font-size:13px;font-weight:800;cursor:pointer;">填入生图框</button>
+      <button id="diceCopy" type="button" style="flex:1;min-width:0;padding:11px 8px;border:0.5px solid rgba(255,255,255,0.35);background:rgba(255,255,255,0.10);color:#fff;border-radius:14px;font-size:13px;font-weight:700;cursor:pointer;">复制</button>
+    </div>
     <div style="position:relative;text-align:center;font-size:10.5px;color:rgba(255,255,255,0.5);margin-top:8px;">点骰子换一条 · 骰子可拖动</div>
   </div>
 </div>
@@ -1266,6 +1271,65 @@ document.addEventListener("DOMContentLoaded", function(){
     } else {
       toast('复制失败，请长按选择');
     }
+  }
+
+  /* ---- 填入生图框：与主卡片「填入」按钮共用 APP 的 __stapp_fill 消息桥 ----
+     以前骰子面板只绑了 safeCopy，所以这张卡只能复制、进不了生图框。 */
+  var fillPending = false, fillTimer = null;
+
+  function diceText(){
+    return String(window._lastDiceText || (curId && textCache[curId]) || '');
+  }
+
+  window.addEventListener('message', function(e){
+    var d = e.data;
+    if(!d || d.__stapp_fill_ack !== 1) return;
+    if(e.source && e.source !== window.parent) return;
+    if(!fillPending) return;
+    fillPending = false;
+    clearTimeout(fillTimer);
+    toast('已带入生图框');
+    closeMask();
+  });
+
+  function fillIntoApp(retried){
+    var txt = diceText();
+    if(!txt){
+      if(!retried){
+        toast('提示词还在加载…');
+        loadTexts().then(function(){
+          if(curId && textCache[curId]) window._lastDiceText = textCache[curId];
+          fillIntoApp(true);
+        });
+      } else {
+        toast('这条暂无提示词正文');
+      }
+      return;
+    }
+    /* 父页同源注入过 onPromptUse 时直接调用；否则一律 postMessage，跨域也能用 */
+    var direct = false;
+    try {
+      if(window.parent !== window && typeof window.parent.onPromptUse === 'function'){
+        window.parent.onPromptUse(txt);
+        direct = true;
+      }
+    } catch(e){}
+    if(direct){
+      toast('已带入生图框');
+      closeMask();
+      return;
+    }
+    try { window.parent.postMessage({ __stapp_fill: 1, text: txt }, '*'); }
+    catch(e){ safeCopy(txt); return; }
+    /* 单独在浏览器打开词库页（没有 APP 父页）时，退化成复制，不出现点了没反应 */
+    fillPending = true;
+    clearTimeout(fillTimer);
+    fillTimer = setTimeout(function(){
+      if(!fillPending) return;
+      fillPending = false;
+      safeCopy(txt);
+      toast('APP 未响应，已复制提示词');
+    }, 900);
   }
 
   function normImg(u){
@@ -1370,10 +1434,16 @@ document.addEventListener("DOMContentLoaded", function(){
     }
   }
 
+  function closeMask(){
+    if(mask) mask.classList.remove('show');
+    try { fab.classList.remove('dice-panel-open'); } catch(e){}
+  }
+
   function openMask(){
     if(!mask) return;
     if(!mask.classList.contains('show')){
       mask.classList.add('show');
+      try { fab.classList.add('dice-panel-open'); } catch(e){}
       var panel = document.getElementById('dicePanel');
       if(panel){ panel.style.animation='none'; void panel.offsetWidth; panel.style.animation=''; }
     }
@@ -1448,10 +1518,12 @@ document.addEventListener("DOMContentLoaded", function(){
   window.addEventListener('resize', clampPos);
 
   var closeBtn = document.getElementById('diceClose');
-  if(closeBtn) closeBtn.onclick = function(){ if(mask) mask.classList.remove('show'); };
-  if(mask) mask.onclick = function(e){ if(e.target.id === 'diceMask') this.classList.remove('show'); };
+  if(closeBtn) closeBtn.onclick = function(){ closeMask(); };
+  if(mask) mask.onclick = function(e){ if(e.target.id === 'diceMask') closeMask(); };
+  var fillBtn = document.getElementById('diceFill');
+  if(fillBtn) fillBtn.onclick = function(){ fillIntoApp(false); };
   var copyBtn = document.getElementById('diceCopy');
-  if(copyBtn) copyBtn.onclick = function(){ safeCopy(window._lastDiceText || ''); };
+  if(copyBtn) copyBtn.onclick = function(){ safeCopy(diceText()); };
 });
 </script>
 
