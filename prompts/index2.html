@@ -17,27 +17,29 @@
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
-  /* 横向裁切只放在 html：body 一旦出现 overflow-x:hidden，
-     会被计算成 overflow-y:auto 的「不可滚动滚动容器」，
-     在 Android WebView 的 iframe 里把触摸滚动直接截断。 */
+  /* 关键修复：跨域 iframe 在 Android WebView（一加/OPPO Chromium 内核）里，
+     根元素 html 作为滚动容器时 touchmove 经常被直接吞掉，页面完全滑不动。
+     改成 html 锁死不滚、body 作为唯一 overflow-y:auto 的普通滚动容器，
+     这是 iframe 内最可靠的滚动形态。 */
   html {
-    overflow-x: hidden;
-    overflow-y: auto;
-    overscroll-behavior-y: auto;
-    -webkit-overflow-scrolling: touch;
+    height: 100%;
+    overflow: hidden;
   }
 
   body {
+    height: 100%;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    position: relative;
     font-family: -apple-system, "SF Pro Text", "PingFang SC", system-ui, sans-serif;
     background:
       radial-gradient(900px 600px at 15% 20%, #ff6ec4 0%, transparent 55%),
       radial-gradient(800px 500px at 85% 15%, #7873f5 0%, transparent 55%),
       radial-gradient(700px 700px at 50% 85%, #4adede 0%, transparent 60%),
       #0a0a12;
-    min-height: 100dvh;
     padding-bottom: 24px;
-    overscroll-behavior: auto;
-    -webkit-overflow-scrolling: touch;
   }
 
   /* 搜索栏 */
@@ -943,15 +945,16 @@ function showCount() {
     : (state.loading ? '正在加载提示词库…' : '未加载到数据，请检查 data/ 目录是否与本页面同级（需通过 http 访问）');
 }
 
-/* ===== 滑到底自动续载：只增页、不重洗牌，本次进入的顺序保持不动 ===== */
+/* ===== 滑到底自动续载：只增页、不重洗牌，本次进入的顺序保持不动 =====
+   滚动容器是 body（见页首 CSS），此时 window.scrollY 恒为 0，必须读 body.scrollTop */
 (function () {
   var busy = false;
-  function scroller() { return document.scrollingElement || document.documentElement; }
   function nearBottom() {
-    var sc = scroller();
-    var y = window.scrollY || sc.scrollTop || document.body.scrollTop || 0;
-    var h = Math.max(sc.scrollHeight || 0, document.body.scrollHeight || 0);
-    return h - (y + window.innerHeight) < 480;
+    var b = document.body;
+    var y = b.scrollTop || 0;
+    var h = b.scrollHeight || 0;
+    var vh = b.clientHeight || window.innerHeight || 1;
+    return h - (y + vh) < 480;
   }
   function more() {
     if (busy || !document.getElementById('loadMore') || !nearBottom()) return;
@@ -960,9 +963,13 @@ function showCount() {
     try { renderCards(); } catch (e) {}
     setTimeout(function () { busy = false; more(); }, 260);
   }
-  window.addEventListener('scroll', more, { passive: true });
+  document.body.addEventListener('scroll', more, { passive: true });
   document.addEventListener('scroll', more, { passive: true, capture: true });
+  window.addEventListener('scroll', more, { passive: true });
   window.addEventListener('resize', more);
+  /* 兜底：少数 WebView 不派发 scroll，用 touchend + 定时补判 */
+  document.addEventListener('touchend', function () { setTimeout(more, 120); }, { passive: true });
+  setInterval(more, 900);
 })();
 
 
@@ -1395,31 +1402,49 @@ document.addEventListener("DOMContentLoaded", function(){
 
   var top = document.getElementById('toTopBtn');
   if (!top) return;
+  var b = document.body;
   var ticking = false;
   function sync() {
-    var y = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+    var y = b.scrollTop || 0;
     if (y > 180) top.classList.add('show');
     else top.classList.remove('show');
     ticking = false;
   }
-  window.addEventListener('scroll', function () {
+  function onScroll() {
     if (ticking) return;
     ticking = true;
     requestAnimationFrame(sync);
-  }, { passive: true });
+  }
+  b.addEventListener('scroll', onScroll, { passive: true });
+  document.addEventListener('scroll', onScroll, { passive: true, capture: true });
+  window.addEventListener('scroll', onScroll, { passive: true });
   document.addEventListener('DOMContentLoaded', sync);
   sync();
   top.addEventListener('click', function () {
     var opt = { top: 0, behavior: 'smooth' };
+    try { b.scrollTo(opt); } catch (e) { b.scrollTop = 0; }
     try { window.scrollTo(opt); } catch (e) { window.scrollTo(0, 0); }
-    try { document.body.scrollTo(opt); } catch (e) { document.body.scrollTop = 0; }
-    try {
-      var sc = document.scrollingElement || document.documentElement;
-      if (sc && sc !== document.body) sc.scrollTo(opt);
-    } catch (e) { document.documentElement.scrollTop = 0; }
+    try { document.documentElement.scrollTop = 0; } catch (e) {}
   });
 })();
 </script>
 
+<!-- ?diag=1 才出现：滚动自检浮标，正常界面完全不显示 -->
+<script>
+(function () {
+  if (!/[?&]diag=1/.test(location.search)) return;
+  var b = document.body, touch = 0, last = -1;
+  document.addEventListener('touchmove', function () { touch++; }, { passive: true });
+  var d = document.createElement('div');
+  d.style.cssText = 'position:fixed;z-index:99999;right:8px;bottom:8px;padding:7px 10px;border-radius:10px;background:rgba(0,0,0,.78);color:#6f6;font:11px/1.55 monospace;white-space:pre;pointer-events:none';
+  b.appendChild(d);
+  setInterval(function () {
+    var t = Math.round(b.scrollTop);
+    d.textContent = 'top ' + t + '\nH ' + b.scrollHeight + '\nC ' + b.clientHeight +
+                    '\ntouch ' + touch + '\n' + (t > 0 ? 'SCROLL OK' : 'NO SCROLL');
+    last = t;
+  }, 300);
+})();
+</script>
 </body>
 </html>
