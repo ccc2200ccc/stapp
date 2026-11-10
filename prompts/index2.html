@@ -112,13 +112,22 @@
   /* 网格 */
   .prompt-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
     gap: 16px;
     padding: 16px 20px 20px;
     max-width: 960px;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
     margin: 0 auto;
     content-visibility: auto;
   }
+
+  /* 彻底杜绝横向溢出：卡片永远不比容器宽 */
+  html, body { max-width: 100%; }
+  .prompt-card { min-width: 0; max-width: 100%; }
+  .prompt-card-img-wrap { width: 100%; }
+  .prompt-card-img { max-width: 100%; }
 
   /* 卡片 */
   .prompt-card {
@@ -515,14 +524,22 @@ body { padding-top: 112px !important; }
 .topbar {
   position: fixed; top: 0; left: 0; right: 0;
   z-index: 9998;
-  padding: 10px 14px 6px;
-  background: rgba(255,255,255,0.94);
-  -webkit-backdrop-filter: blur(18px) saturate(160%);
-  backdrop-filter: blur(18px) saturate(160%);
-  border-bottom: 0.5px solid rgba(0,0,0,0.09);
-  box-shadow: 0 6px 22px rgba(0,0,0,0.14);
+  padding: 8px 10px 0;
+  background: transparent;
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border-bottom: none;
+  box-shadow: none;
 }
-.topbar-row { display: flex; align-items: center; gap: 10px; }
+/* 白条只包第一行，70% 透明，左右各留 10px 不再铺满整屏 */
+.topbar-row {
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(255,255,255,0.70);
+  border: 0.5px solid rgba(255,255,255,0.55);
+  border-radius: 18px;
+  padding: 6px 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+}
 
 /* 搜索框：让出右侧给圆形按钮，同一排 */
 .topbar .search-bar {
@@ -581,22 +598,58 @@ body { padding-top: 112px !important; }
 }
 .topbar .view-switch button.pop { animation: viewBtnPop .42s cubic-bezier(.34,1.56,.64,1); }
 
-/* 风格导航：白底上的深色胶囊 */
-.topbar .category-scroll { padding: 10px 0 8px !important; gap: 7px; }
+/* 风格导航：这一行没有任何背景，只有胶囊本身，浮在渐变上 */
+.topbar .category-scroll {
+  padding: 10px 2px 8px !important;
+  gap: 7px;
+  background: transparent !important;
+}
 .topbar .category-chip {
-  background: rgba(0,0,0,0.055) !important;
-  border-color: rgba(0,0,0,0.10) !important;
-  color: #48484a !important;
+  background: rgba(255,255,255,0.16) !important;
+  border-color: rgba(255,255,255,0.42) !important;
+  color: rgba(255,255,255,0.94) !important;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
 }
 .topbar .category-chip.active {
-  background: #1c1c1e !important;
-  border-color: #1c1c1e !important;
-  color: #fff !important;
+  background: rgba(74,222,222,0.92) !important;
+  border-color: rgba(74,222,222,0.95) !important;
+  color: #08201f !important;
+  font-weight: 700;
 }
 
-/* 切到原站视图时收起白条 */
-body:has(#officialView.show) { padding-top: 0 !important; }
-body:has(#officialView.show) .topbar { display: none; }
+/* 原站视图：白条和两个圆形按钮始终保留，只收起风格分类行 */
+body.official-mode { padding-top: 62px !important; }
+body.official-mode .topbar .category-scroll { display: none; }
+body.official-mode .topbar .search-bar { display: none; }
+body.official-mode #officialView { top: 62px !important; }
+body.official-mode #btnBackCard { display: flex !important; }
+
+/* 返回卡片视图按钮（仅原站模式出现） */
+#btnBackCard {
+  display: none;
+  flex: 1 1 auto; min-width: 0;
+  height: 38px; align-items: center; gap: 6px;
+  padding: 0 14px; border-radius: 19px;
+  background: rgba(0,0,0,0.06);
+  border: 0.5px solid rgba(0,0,0,0.10);
+  color: #1c1c1e; font-size: 13px; font-weight: 600;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+  transition: transform .25s cubic-bezier(.34,1.56,.64,1);
+}
+#btnBackCard svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+#btnBackCard:active { transform: scale(0.95); }
+
+/* 原站嵌套受限时的温和提示，不遮挡内容 */
+#officialTip {
+  position: absolute; left: 12px; right: 12px; bottom: calc(16px + env(safe-area-inset-bottom));
+  z-index: 3; padding: 10px 14px; border-radius: 14px;
+  background: rgba(20,20,28,0.86); color: #fff;
+  font-size: 12px; line-height: 1.5; text-align: center;
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.35);
+}
+#officialTip a { color: #7ff2f2; font-weight: 600; text-decoration: none; }
 
 /* 图片在卡片里居中显示 */
 .prompt-card-img-wrap { display: flex; align-items: center; justify-content: center; }
@@ -642,6 +695,12 @@ body:has(#officialView.show) .topbar { display: none; }
       <input type="text" placeholder="搜索提示词、风格、模型..." id="searchInput" />
     </div>
 
+    <!-- 仅原站视图出现：一键切回卡片 -->
+    <button id="btnBackCard" type="button">
+      <svg viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>
+      <span>返回卡片视图</span>
+    </button>
+
     <!-- 右上角圆形图标切换按钮 -->
     <div class="view-switch">
       <button id="btnCard" class="active" type="button" title="卡片视图" aria-label="卡片视图" onclick="switchView('card')">
@@ -671,6 +730,10 @@ body:has(#officialView.show) .topbar { display: none; }
 <!-- 官方原生页面 -->
 <div id="officialView">
   <iframe src="https://prompt.qqsrc.com/" title="水仙原站"></iframe>
+  <div id="officialTip">
+    原站若显示空白，是外站不允许被嵌套打开，<b>提示词库数据没丢</b>。<br>
+    点上方「返回卡片视图」即可，或 <a href="https://prompt.qqsrc.com/" target="_blank" rel="noopener">在新窗口打开原站 ↗</a>
+  </div>
 </div>
 
 
@@ -700,44 +763,6 @@ const GROUPS = ["人物写真", "动漫二次元", "古风国风", "摄影", "�
 const HIDDEN_MAJORS = [];
 
 const state = { all: [], view: [], cat: 'all', q: '', page: 1, loading: false };
-/* ===== 每次进入灵感案例：按种子洗牌（无 seed 时保持原有顺序，零影响） ===== */
-function _mulberry32(a) {
-  return function () {
-    a |= 0; a = a + 0x6D2B79F5 | 0;
-    var x = Math.imul(a ^ a >>> 15, 1 | a);
-    x = x + Math.imul(x ^ x >>> 7, 61 | x) ^ x;
-    return ((x ^ x >>> 14) >>> 0) / 4294967296;
-  };
-}
-function _shuffleSeeded(arr, seed) {
-  var r = _mulberry32(seed || 1);
-  for (var i = arr.length - 1; i > 0; i--) {
-    var j = Math.floor(r() * (i + 1));
-    var tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
-  }
-  return arr;
-}
-var SHUFFLE_SEED = 0;
-try {
-  var _sp = new URLSearchParams(location.search).get('seed');
-  if (_sp) SHUFFLE_SEED = (parseInt(_sp, 10) || 0) >>> 0;
-} catch (e) {}
-window.addEventListener('message', function (e) {
-  var d = e.data;
-  if (!d || d.__stapp_shuffle !== 1) return;
-  SHUFFLE_SEED = (Number(d.seed) || 0) >>> 0;
-  state.page = 1;
-  if (state.all.length) { try { applyFilter(true); } catch (err) {} }
-  try {
-    (e.source || window.parent).postMessage({ __stapp_shuffle_ack: 1, seed: SHUFFLE_SEED }, '*');
-  } catch (err2) {}
-});
-// 告诉 APP：带洗牌能力的新词库页已就位（没上传时 APP 会自动回退旧页）
-function _libReady() {
-  try { window.parent.postMessage({ __stapp_lib_ready: 1 }, '*'); } catch (e) {}
-}
-if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _libReady);
-else _libReady();
 const grid = document.getElementById('grid');
 const toast = document.getElementById('toast');
 const catScroll = document.getElementById('categoryScroll');
@@ -821,7 +846,6 @@ function applyFilter(reset) {
                p.cat.join(' ').toLowerCase().includes(q) || p.text.toLowerCase().includes(q);
     return okCat && okQ;
   });
-  if (SHUFFLE_SEED) _shuffleSeeded(state.view, SHUFFLE_SEED);
   renderCards();
 }
 
@@ -897,8 +921,7 @@ function showCount() {
     el = document.createElement('div');
     el.id = 'statBar';
     el.style.cssText = 'max-width:960px;margin:0 auto;padding:0 20px;color:rgba(255,255,255,.62);font-size:12px';
-    if (grid.parentNode === catScroll.parentNode) catScroll.parentNode.insertBefore(el, grid);
-    else catScroll.parentNode.appendChild(el);
+    (grid.parentNode || document.body).insertBefore(el, grid);
   }
   el.textContent = state.all.length
     ? `共 ${state.all.length} 条提示词，当前显示 ${Math.min(state.view.length, state.page * CONFIG.PAGE_SIZE)} 条`
@@ -993,7 +1016,7 @@ function fallbackCopy(text, btn, originalHTML, done) {
 function usePrompt(text) {
   if (!text) { showToast('这条提示词加载失败'); return; }
   if (typeof window.onPromptUse === 'function') window.onPromptUse(text);
-  else { try { window.parent.postMessage({ __stapp_fill: 1, text: text }, '*'); } catch (e) {} showToast('已带入生图框'); }
+  else showToast('已加载完整提示词，请点「复制」按钮');
 }
 
 function showToast(msg) {
@@ -1048,6 +1071,31 @@ function showToast(msg) {
 }
 #diceToast { animation:diceToastIn .24s ease both; }
 #diceToast.out { opacity:0; transform:translateX(-50%) translateY(10px); transition:opacity .25s, transform .25s; }
+
+/* ===== 99.0.59 · 卡片居中修正：任何屏宽都水平居中、零横向溢出 ===== */
+html, body { max-width:100%!important; overflow-x:hidden!important; }
+.prompt-grid{
+  display:grid!important;
+  grid-template-columns:repeat(auto-fit,minmax(min(280px,100%),1fr))!important;
+  width:100%!important; min-width:0!important; max-width:960px!important;
+  margin-left:auto!important; margin-right:auto!important;
+  padding-left:16px!important; padding-right:16px!important;
+  box-sizing:border-box!important;
+  justify-content:center!important; justify-items:center!important;
+}
+.prompt-card{
+  width:100%!important; min-width:0!important; max-width:100%!important;
+  justify-self:center!important; margin-left:auto!important; margin-right:auto!important;
+  box-sizing:border-box!important;
+}
+.prompt-card--wide{ grid-column:span 1!important; }
+@media(min-width:640px){ .prompt-card--wide{ grid-column:span 2!important; } }
+.prompt-card-img-wrap,.prompt-card-img{
+  width:100%!important; max-width:100%!important; box-sizing:border-box!important;
+}
+.prompt-grid > .empty-state{ grid-column:1/-1!important; }
+#statBar{ max-width:960px!important; margin-left:auto!important; margin-right:auto!important; text-align:center!important; }
+
 </style>
 
 <div id="diceMask" style="position:fixed;inset:0;background:rgba(6,6,14,0.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);z-index:9999;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
@@ -1361,5 +1409,117 @@ document.addEventListener("DOMContentLoaded", function(){
 })();
 </script>
 
+
+<script>
+/* 原站/卡片模式同步 + 返回按钮 + 卡片未加载兜底（原有 JS 一行未改） */
+(function () {
+  var ov = document.getElementById('officialView');
+  if (ov) {
+    function sync() {
+      document.body.classList.toggle('official-mode', ov.classList.contains('show'));
+    }
+    if (window.MutationObserver) {
+      new MutationObserver(sync).observe(ov, { attributes: true, attributeFilter: ['class'] });
+    }
+    document.addEventListener('DOMContentLoaded', sync);
+    sync();
+  }
+  var back = document.getElementById('btnBackCard');
+  if (back) back.addEventListener('click', function () {
+    try { switchView('card'); } catch (e) { if (ov) ov.classList.remove('show'); }
+  });
+
+  // 若 3.5 秒后卡片区仍为空，给一个可见的重载入口，避免误以为数据丢了
+  setTimeout(function () {
+    var g = document.getElementById('grid');
+    if (!g || g.querySelector('.prompt-card')) return;
+    if (document.body.classList.contains('official-mode')) return;
+    var tip = document.createElement('div');
+    tip.style.cssText = 'grid-column:1/-1;text-align:center;padding:26px 16px;color:#fff;font-size:13px;line-height:1.7;opacity:.85';
+    tip.innerHTML = '卡片还没加载出来（数据文件可能还在路上）<br>';
+    var b = document.createElement('button');
+    b.textContent = '点此重新加载';
+    b.style.cssText = 'margin-top:12px;padding:9px 20px;border:0.5px solid rgba(255,255,255,.4);background:rgba(255,255,255,.14);color:#fff;border-radius:20px;font-size:13px;font-weight:600;cursor:pointer';
+    b.onclick = function () { location.reload(); };
+    tip.appendChild(b);
+    g.appendChild(tip);
+  }, 3500);
+})();
+</script>
+
+
+<!-- 99.0.59 · 案例列表：每次点「灵感案例」按新种子洗一次；本次停留内顺序固定 -->
+<script>
+(function () {
+  var done = Object.create(null);
+  var lastSeed = '';
+
+  function rng(seed) {
+    var s = 2166136261 >>> 0;
+    for (var i = 0; i < seed.length; i++) {
+      s ^= seed.charCodeAt(i); s = Math.imul(s, 16777619) >>> 0;
+    }
+    return function () {
+      s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+      return s / 4294967296;
+    };
+  }
+
+  function shuffleOnce(seed) {
+    if (!seed) return true;
+    if (done[seed]) return true;
+    if (typeof state === 'undefined' || !state.all || state.all.length < 2) return false;
+    done[seed] = true; lastSeed = seed;
+
+    /* Fisher–Yates 打乱数据源：分类 / 搜索 / 分页都继承本次顺序 */
+    var a = state.all, r = rng(String(seed));
+    for (var i = a.length - 1; i > 0; i--) {
+      var j = Math.floor(r() * (i + 1));
+      var t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    state.cat = 'all'; state.q = ''; state.page = 1;
+    try {
+      var si = document.getElementById('searchInput'); if (si) si.value = '';
+      var chips = document.querySelectorAll('.category-chip');
+      for (var k = 0; k < chips.length; k++) {
+        chips[k].classList.toggle('active', chips[k].getAttribute('data-cat') === 'all');
+      }
+    } catch (e) {}
+    try { applyFilter(true); } catch (e2) { try { renderCards(); } catch (e3) {} }
+    try { window.scrollTo(0, 0); } catch (e4) {}
+    return true;
+  }
+
+  function onSeed(seed) {
+    if (!seed || seed === lastSeed) return;      /* 同一次点击的 load 补发不重复洗 */
+    var tries = 0;
+    (function wait() {
+      if (shuffleOnce(seed)) return;
+      if (tries++ < 80) setTimeout(wait, 120);  /* 等 data/*.json 加载完 */
+    })();
+  }
+
+  window.addEventListener('message', function (e) {
+    var d = e.data;
+    if (!d || d.__stapp_shuffle !== 1 || d.seed == null) return;
+    try { if (e.source && e.source !== window.parent) return; } catch (err) {}
+    var seed = String(d.seed);                 /* 字符串 / 数字种子都收 */
+    onSeed(seed);
+    try { (e.source || window.parent).postMessage({ __stapp_shuffle_ack: 1, seed: seed }, '*'); } catch (e2) {}
+  });
+
+  function fromUrl() {
+    var m = /[?&](?:shuffle|seed)=([^&#]+)/.exec(location.search || '');
+    if (!m) m = /(?:^#|&)(?:shuffle|seed)=([^&]+)/.exec(location.hash || '');
+    return m ? decodeURIComponent(m[1]) : '';
+  }
+  window.addEventListener('hashchange', function () { var s = fromUrl(); if (s) onSeed(s); });
+  var s0 = fromUrl(); if (s0) onSeed(s0);
+
+  function ready() { try { window.parent.postMessage({ __stapp_lib_ready: 1 }, '*'); } catch (e) {} }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ready);
+  else ready();
+})();
+</script>
 </body>
 </html>
