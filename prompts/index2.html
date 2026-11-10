@@ -176,6 +176,7 @@
     width: 100%;
     height: 180px;
     object-fit: cover;
+    background: linear-gradient(135deg, #2b3a67, #6d4b8e);
     display: block;
     transform: translateZ(0);
     transition: transform 0.6s ease;
@@ -619,9 +620,28 @@ body { padding-top: 112px !important; }
   color: #fff !important;
 }
 
-/* 切到原站视图时收起白条 */
-body:has(#officialView.show) { padding-top: 0 !important; }
-body:has(#officialView.show) .topbar { display: none; }
+/* 原站视图：只收起搜索/分类，右上角「卡片视图」按钮常驻，随时能切回来。
+   旧规则把整个 .topbar 隐藏了，切换按钮一起消失 —— 这就是「点了切不回来」的根因。
+   用 body.official-mode 类而非 :has()，老 WebView 同样生效。 */
+body.official-mode { padding-top: 0 !important; }
+body.official-mode .topbar { padding: 8px 16px; }
+body.official-mode .topbar .search-bar,
+body.official-mode .topbar .category-scroll { display: none !important; }
+body.official-mode .topbar-row { justify-content: flex-end; }
+
+/* 第二道保险：原站 iframe 内的右下角小胶囊，只在原站视图出现 */
+#backCardBtn {
+  position: fixed; right: 14px; bottom: calc(18px + env(safe-area-inset-bottom));
+  z-index: 9999; display: none;
+  height: 34px; padding: 0 14px; border-radius: 17px;
+  border: 0.5px solid rgba(255,255,255,0.5);
+  background: rgba(20,20,28,0.72); color: #fff;
+  font-size: 12px; font-weight: 600; letter-spacing: .2px;
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  -webkit-tap-highlight-color: transparent;
+  align-items: center; gap: 6px;
+}
+body.official-mode #backCardBtn { display: inline-flex; }
 
 /* 图片在卡片里居中显示 */
 .prompt-card-img-wrap { display: flex; align-items: center; justify-content: center; }
@@ -696,6 +716,7 @@ body:has(#officialView.show) .topbar { display: none; }
 <!-- 官方原生页面 -->
 <div id="officialView">
   <iframe src="https://prompt.qqsrc.com/" title="水仙原站"></iframe>
+  <button id="backCardBtn" type="button" onclick="switchView('card')">▦ 卡片视图</button>
 </div>
 
 
@@ -716,6 +737,7 @@ const CONFIG = {
   LIST_PARTS: ['list.part1.json', 'list.part2.json', 'list.part3.json'],
   PROMPT_PARTS: ['prompts.part1.json', 'prompts.part2.json', 'prompts.part3.json'],
   IMG_BASE: './',
+  MAP_JSON: './images/map.json',   /* 可选：无原图时的占位图映射 */
   PAGE_SIZE: 30
 };
 
@@ -724,7 +746,7 @@ const CAT_GROUP = {"证件照": "人物写真", "纯人物摄影": "人物写真
 const GROUPS = ["人物写真", "动漫二次元", "古风国风", "摄影", "海报设计", "绘画插画", "文字", "手工3D", "大尺度", "其他"];
 const HIDDEN_MAJORS = [];
 
-const state = { all: [], view: [], cat: 'all', q: '', page: 1, loading: false };
+const state = { all: [], view: [], cat: 'all', q: '', page: 1, loading: false, imgMap: {} };
 /* ===== 每次进入灵感案例：按种子洗牌（无 seed 时保持原有顺序，零影响） ===== */
 function _mulberry32(a) {
   return function () {
@@ -781,12 +803,50 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
 ));
 
+/* ===== 图片兜底：原图 -> 占位图 -> 内置渐变封面，绝不留白 ===== */
+function svgCover(id, title) {
+  var n = 0, s = String(id == null ? '' : id);
+  for (var i = 0; i < s.length; i++) n = (n * 31 + s.charCodeAt(i)) >>> 0;
+  var h = n % 360, h2 = (h + 55) % 360;
+  var t = String(title || '提示词').slice(0, 7);
+  var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="360">' +
+    '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">' +
+    '<stop offset="0" stop-color="hsl(' + h + ',68%,58%)"/>' +
+    '<stop offset="1" stop-color="hsl(' + h2 + ',62%,30%)"/></linearGradient></defs>' +
+    '<rect width="600" height="360" fill="url(#g)"/>' +
+    '<circle cx="510" cy="60" r="140" fill="rgba(255,255,255,.10)"/>' +
+    '<circle cx="80" cy="330" r="170" fill="rgba(255,255,255,.07)"/>' +
+    '<text x="34" y="62" font-size="19" fill="rgba(255,255,255,.85)" font-family="sans-serif">' + esc(id) + '</text>' +
+    '<text x="34" y="200" font-size="46" font-weight="700" fill="#fff" font-family="sans-serif">' + esc(t) + '</text>' +
+    '<text x="34" y="246" font-size="18" fill="rgba(255,255,255,.80)" font-family="sans-serif">点开查看完整提示词</text>' +
+    '</svg>';
+  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+}
+window.__imgOk = function (el) {
+  var l = el.parentNode && el.parentNode.querySelector('.img-loading');
+  if (l) l.classList.add('hide');
+};
+window.__imgFail = function (el) {
+  var stage = +(el.getAttribute('data-stage') || 0);
+  var id = el.getAttribute('data-id') || '';
+  if (stage === 0) {
+    el.setAttribute('data-stage', '1');
+    var m = state.imgMap && state.imgMap[id];
+    if (m) { el.src = CONFIG.IMG_BASE + String(m).replace(/^\.?\//, ''); return; }
+  }
+  if (stage <= 1) {
+    el.setAttribute('data-stage', '2');
+    el.src = svgCover(id, el.getAttribute('alt') || '提示词');
+  }
+};
+
 /* ---------- 数据加载 ---------- */
 const _jsonCache = {};
 async function getJSON(url) {
   if (_jsonCache[url]) return _jsonCache[url];
   try {
-    const res = await fetch(url, { cache: 'force-cache' });
+    const _bustUrl = url + (url.indexOf('?') === -1 ? '?_=' : '&_=') + Date.now();
+  const res = await fetch(_bustUrl, { cache: 'no-store' });
     if (!res.ok) return [];
     const d = await res.json();
     const _arr = Array.isArray(d) ? d : (d.list || d.data || d.prompts || []);
@@ -794,33 +854,42 @@ async function getJSON(url) {
     return _arr;
   } catch (e) { return []; }
 }
-const uniq = arr => { const s = new Set(); return arr.filter(x => { const k = JSON.stringify(x); return s.has(k) ? false : s.add(k); }); };
+const uniq = arr => { const s = new Set(); return arr.filter(x => { if (!x) return false; const k = x.id != null ? 'id:' + x.id : 'j:' + JSON.stringify(x); return s.has(k) ? false : s.add(k); }); };
 
 async function loadList() {
-  const parts = await Promise.all(CONFIG.LIST_PARTS.map(f => getJSON(CONFIG.DATA_BASE + f)));
+  /* 三片一起读：线上 part3 曾被 3 字节空数组覆盖，恢复后 6011 条全回来 */
+  const [parts, map] = await Promise.all([
+    Promise.all(CONFIG.LIST_PARTS.map(f => getJSON(CONFIG.DATA_BASE + f))),
+    fetch(CONFIG.MAP_JSON + (CONFIG.MAP_JSON.indexOf('?') === -1 ? '?_=' : '&_=') + Date.now(), { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null)
+      .then(m => (m && !Array.isArray(m)) ? m : {})
+      .catch(() => ({}))
+  ]);
+  state.imgMap = map || {};
+  window.__partCounts = parts.map(function (a) { return Array.isArray(a) ? a.length : -1; });
   let raw = uniq(parts.flat());
-  if (!raw.length) {                      // 兜底：只有一个 list.json
-    raw = await getJSON(CONFIG.DATA_BASE + 'list.json');
-  }
+  if (!raw.length) raw = await getJSON(CONFIG.DATA_BASE + 'list.json');
   state.all = raw.map((p, i) => {
     const cats = p.categories || p.category || p.tags || [];
-    const arr = Array.isArray(cats) ? cats : String(cats).split(/[、,，/|]/);
-    const sub =Array.isArray(arr)?arr[0]:String(arr||''); const major = CAT_GROUP[sub] || (CAT_GROUP.__REST__.includes(sub)?'其他':'其他');
+    const arr = Array.isArray(cats) ? cats : String(cats || '').split(/[、,，/|]/);
+    const sub = Array.isArray(arr) ? arr[0] : String(arr || '');
+    const major = CAT_GROUP[sub] || (CAT_GROUP.__REST__.includes(sub) ? '其他' : '其他');
     const img = p.img || p.image || p.cover || '';
+    let txt = p.prompt || p.text || '';
+    const isJson = typeof txt === 'string' && (txt.trim().startsWith('{') || txt.trim().startsWith('['));
+    if (isJson) { try { txt = JSON.stringify(JSON.parse(txt), null, 2); } catch (e) {} }
     return {
       id: p.id != null ? p.id : i,
       title: p.title || p.name || ('提示词 #' + (i + 1)),
-      major,
+      major: major,
       cat: arr.map(String),
       source: p.source || '水仙提示词库',
       img: /^https?:/.test(img) ? img : (img ? CONFIG.IMG_BASE + img : ''),
-      text: p.prompt || p.text || '',
-      isJson: false,
+      text: txt,
+      isJson: isJson,
       likes: p.likes != null ? p.likes : null,
-      _full: !!p.prompt,
-      isJson: (typeof p.text === 'string' && (p.text.trim().startsWith('{') || p.text.trim().startsWith('[')))
+      _full: !!p.prompt
     };
-    if (item.isJson) { try { item.text = JSON.stringify(JSON.parse(item.text), null, 2); } catch(e) {} }
   });
   buildCategoryChips();
 }
@@ -860,12 +929,10 @@ function applyFilter(reset) {
 }
 
 function cardHTML(p) {
-  const seed = encodeURIComponent(p.id);
-  const img = p.img
-    ? '<img class="prompt-card-img" alt="' + esc(p.title) + '" src="' + esc(p.img) + '" loading="lazy" ' +
-      'onload="this.parentNode.querySelector(\'.img-loading\').classList.add(\'hide\')" ' +
-      'onerror="this.style.display=\'none\';this.parentNode.querySelector(\'.img-loading\').classList.add(\'hide\')" />'
-    : '';
+  const firstSrc = p.img ? p.img : svgCover(p.id, p.title);
+  const img = '<img class="prompt-card-img" alt="' + esc(p.title) + '" src="' + esc(firstSrc) + '" ' +
+    'data-id="' + esc(p.id) + '" data-stage="0" loading="lazy" decoding="async" fetchpriority="low" ' +
+    'onload="__imgOk(this)" onerror="__imgFail(this)" />';
   return `
     <div class="prompt-card-img-wrap">
       <div class="img-loading" style="background:linear-gradient(135deg,hsl(${p.id * 37 % 360} 60% 45%),hsl(${p.id * 37 % 360 + 40} 60% 30%))"></div>
@@ -940,8 +1007,10 @@ function showCount() {
     el.style.cssText = 'max-width:960px;margin:0 auto;padding:10px 16px 0;color:rgba(255,255,255,.62);font-size:12px;text-align:center';
     grid.parentNode.insertBefore(el, grid);
   }
+  const _pc = window.__partCounts;
+  const _warn = (_pc && _pc[2] === 0) ? ' · part3 未加载（检查 prompts/data/）' : '';
   el.textContent = state.all.length
-    ? `共 ${state.all.length} 条提示词，当前显示 ${Math.min(state.view.length, state.page * CONFIG.PAGE_SIZE)} 条`
+    ? `共 ${state.all.length} 条提示词，当前显示 ${Math.min(state.view.length, state.page * CONFIG.PAGE_SIZE)} 条${_warn}`
     : (state.loading ? '正在加载提示词库…' : '未加载到数据，请检查 data/ 目录是否与本页面同级（需通过 http 访问）');
 }
 
@@ -979,12 +1048,17 @@ function switchView(mode) {
   const bOff = document.getElementById('btnOfficial');
   if (mode === 'official') {
     ov.classList.add('show');
+    document.body.classList.add('official-mode');
     bOff.classList.add('active'); bCard.classList.remove('active');
     document.body.style.overflow = 'hidden';
   } else {
     ov.classList.remove('show');
+    document.body.classList.remove('official-mode');
     bCard.classList.add('active'); bOff.classList.remove('active');
+    /* 恢复上一轮修好的 body 内部滚动链路，避免切回卡片后又滑不动；
+       不重置 scrollTop，保留用户原来的浏览位置 */
     document.body.style.overflow = '';
+    document.body.style.touchAction = '';
   }
 }
 
@@ -1212,7 +1286,7 @@ document.addEventListener("DOMContentLoaded", function(){
       return Promise.resolve(POOL);
     }
     poolPromise = Promise.all([1,2,3].map(function(n){
-      return fetch('./data/list.part'+n+'.json').then(function(r){ return r.ok ? r.json() : []; }).catch(function(){ return []; });
+      return fetch('./data/list.part'+n+'.json?_='+Date.now(), {cache:'no-store'}).then(function(r){ return r.ok ? r.json() : []; }).catch(function(){ return []; });
     })).then(function(arrs){
       arrs.forEach(function(arr){
         (Array.isArray(arr)?arr:[]).forEach(function(x){
@@ -1228,7 +1302,7 @@ document.addEventListener("DOMContentLoaded", function(){
     if(textsLoaded) return Promise.resolve();
     if(textsPromise) return textsPromise;
     textsPromise = Promise.all([1,2,3].map(function(n){
-      return fetch('./data/prompts.part'+n+'.json').then(function(r){ return r.ok ? r.json() : []; }).catch(function(){ return []; });
+      return fetch('./data/prompts.part'+n+'.json?_='+Date.now(), {cache:'no-store'}).then(function(r){ return r.ok ? r.json() : []; }).catch(function(){ return []; });
     })).then(function(arrs){
       arrs.forEach(function(arr){
         (Array.isArray(arr)?arr:[]).forEach(function(x){
@@ -1440,8 +1514,12 @@ document.addEventListener("DOMContentLoaded", function(){
   b.appendChild(d);
   setInterval(function () {
     var t = Math.round(b.scrollTop);
+    var total = (typeof state !== 'undefined' && state.all) ? state.all.length : '?';
+    var pc = window.__partCounts || null;
     d.textContent = 'top ' + t + '\nH ' + b.scrollHeight + '\nC ' + b.clientHeight +
-                    '\ntouch ' + touch + '\n' + (t > 0 ? 'SCROLL OK' : 'NO SCROLL');
+                    '\ntouch ' + touch + '\ntotal ' + total +
+                    '\nparts ' + (pc ? pc.join('/') : '?') +
+                    '\n' + (t > 0 ? 'SCROLL OK' : 'NO SCROLL');
     last = t;
   }, 300);
 })();
